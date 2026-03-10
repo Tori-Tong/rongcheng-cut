@@ -278,15 +278,15 @@ st.subheader("📝 步骤 1：生产工艺与尺码信息")
 # 🌟 修改点 4：将布局划分为 5 列，新增特殊工艺输入框
 col_style, col_color, col_cut, col_layout, col_special = st.columns(5)
 with col_style:
-    style_no = st.text_input("👗 款号 (选填)：", placeholder="DS-2601")
+    style_no = st.text_input("👗 款号 (选填)：", placeholder="RC-001")
 with col_color:
     color = st.text_input("🎨 颜色 (选填)：", placeholder="藏青色")
 with col_cut:
-    cut_type = st.text_input("✂️ 裁片 (选填)：", placeholder="主身")
+    cut_type = st.text_input("✂️ 裁片 (选填)：", placeholder="大身")
 with col_layout:
     layout_dir = st.selectbox("↕️ 排列方式：", options=["任意", "同码同向", "件份同向", "同一方向"], index=1)
 with col_special:
-    special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 对条/手工拉布")
+    special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
 
 size_input = st.text_input(
     "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
