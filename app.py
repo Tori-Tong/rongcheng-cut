@@ -365,7 +365,7 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process)
             components.html(html_content, height=800, scrolling=True)
             
-            st.info("🖱️ **黑科技提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
+            st.info("🖱️ **提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
             
         else:
             st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
