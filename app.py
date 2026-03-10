@@ -111,22 +111,38 @@ def generate_html_table(sizes, initial_orders, markers):
     return html
 
 # ================= 网页 UI 设计 =================
-st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
+st.set_page_config(page_title="服饰排料系统", layout="wide")
 
-st.title("✂️ 蓉成服饰智能排料系统")
+st.title("✂️ 智能排料系统")
 st.markdown("输入大货订单需求与裁床限制，一键生成最优阶梯拉布方案。")
 
 # 侧边栏：参数设置
 st.sidebar.header("⚙️ 裁床限制参数")
-# 🌟 核心修改点：全部默认值归零，最小值设为0
 max_layers = st.sidebar.number_input("最高允许层数", min_value=0, value=0)
 
-display_overage_pct = st.sidebar.slider("最高允许溢出率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
+display_overage_pct = st.sidebar.slider("最高允许增裁率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
 max_overage_pct = display_overage_pct / 100.0 
 
 max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, max_value=100, value=0)
 max_markers = st.sidebar.number_input("总版数上限", min_value=0, max_value=30, value=0)
 max_sizes_per_marker = st.sidebar.number_input("单版最多尺码数", min_value=0, max_value=20, value=0)
+
+# 🌟 新增亮点：在侧边栏加入客户合同标准备注
+st.sidebar.markdown("---")
+with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True):
+    st.markdown("""
+    **(按订单总件数划分)**
+    * **300-500件**：溢装 ≤ 10% | 短缺 ≤ 8%
+    * **501-1000件**：溢装 ≤ 5% | 短缺 ≤ 5%
+    * **1001-3000件**：溢装 ≤ 5% | 短缺 ≤ 2.5%
+    * **3001-5000件**：溢装 ≤ 3% | 短缺 ≤ 1.5%
+    * **5001-10000件**：溢装 ≤ 1.5% | 短缺 ≤ 0.8%
+    * **10000件以上**：溢装 ≤ 1% | 短缺 ≤ 0.4%
+    
+    ⚠️ **核心红线**：
+    1. 任何情况的短缺**均不得断码**！
+    2. 超出溢装比例的货品**系统不予结算**，全部费用乙方承担。
+    """)
 
 # 主页面：订单输入
 st.subheader("📦 步骤 1：设置本次排料的尺码")
@@ -156,9 +172,14 @@ else:
 
 st.write("---")
 
+total_order_qty = sum(orders.values())
+if total_order_qty > 0:
+    st.info(f"💡 当前已录入的订单总需求为： **{total_order_qty}** 件")
+else:
+    st.info("💡 当前已录入的订单总需求为： **0** 件")
+
 # 计算按钮与结果展示
 if st.button("🚀 开始计算排料方案", type="primary", use_container_width=True):
-    # 🌟 新增防呆拦截逻辑：防止参数为0导致算法卡死或直接报错
     if not orders:
         st.error("❌ 请至少填写一个尺码的件数！")
     elif max_layers <= 0:
@@ -174,7 +195,11 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             )
             
         if markers:
-            st.success(f"✅ 成功找到完美方案！共使用了 **{len(markers)}** 个版。")
+            total_produced = 0
+            for m in markers:
+                total_produced += m['sum'] * m['layers']
+                
+            st.success(f"✅ 成功找到完美方案！共使用了 **{len(markers)}** 个版。 订单需求 **{total_order_qty}** 件，实际排版产出 **{total_produced}** 件。")
             
             st.subheader("📊 阶梯式扣减排料单")
             html_table = generate_html_table(valid_sizes, orders, markers)
