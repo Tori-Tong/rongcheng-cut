@@ -1,6 +1,8 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import math
 import re
+from datetime import datetime
 
 # ================= 核心算法 =================
 def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker):
@@ -81,40 +83,87 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-# 🌟 修改点 1：让生成表格的函数接收款号，并直接写在表格最上面
+# 🌟 修改点：在此函数中加入日期处理逻辑
 def generate_html_table(sizes, initial_orders, markers, style_no=""):
-    html = '<table style="width:100%; text-align:center; border-collapse: collapse; font-family: sans-serif; font-size: 16px;">'
+    # 获取当前年月日的中文格式
+    date_str = datetime.now().strftime("%Y年%m月%d日")
     
-    # 如果填写了款号，就在表格顶端加一行专属的款号大标题
-    if style_no:
-        html += f'<tr><td colspan="{len(sizes) + 2}" style="text-align:left; font-size:18px; font-weight:bold; padding:10px; border-bottom: 2px solid #333; background-color: #fff3cd;">🏷️ 生产款号：{style_no}</td></tr>'
+    table_html = '<table style="width:100%; text-align:center; border-collapse: collapse; font-family: sans-serif; font-size: 16px;">'
+    
+    # 🌟 在表头行同时加入款号和靠右对齐的日期
+    display_style = style_no if style_no else "未填"
+    table_html += f'<tr><td colspan="{len(sizes) + 2}" style="text-align:left; font-size:18px; font-weight:bold; padding:10px; border-bottom: 2px solid #333; background-color: #fff3cd;">'
+    table_html += f'🏷️ 生产款号：{display_style} <span style="float:right; font-size:16px; font-weight:normal; color:#555;">📅 日期：{date_str}</span>'
+    table_html += '</td></tr>'
 
-    html += '<tr style="border-bottom: 2px solid #ccc; background-color: #f8f9fa;">'
-    for s in sizes: html += f'<th style="padding: 10px;">{s}</th>'
-    html += '<th style="padding: 10px;">层数</th><th style="padding: 10px;">配比和</th></tr>'
+    table_html += '<tr style="border-bottom: 2px solid #ccc; background-color: #f8f9fa;">'
+    for s in sizes: table_html += f'<th style="padding: 10px;">{s}</th>'
+    table_html += '<th style="padding: 10px;">层数</th><th style="padding: 10px;">配比和</th></tr>'
 
     current_remains = [initial_orders[s] for s in sizes]
-    html += '<tr>'
-    for r in current_remains: html += f'<td style="padding: 8px;">{r}</td>'
-    html += '<td></td><td></td></tr>'
+    table_html += '<tr>'
+    for r in current_remains: table_html += f'<td style="padding: 8px;">{r}</td>'
+    table_html += '<td></td><td></td></tr>'
 
     for marker in markers:
-        html += '<tr style="font-weight: bold; background-color: #fdfdfd;">'
+        table_html += '<tr style="font-weight: bold; background-color: #fdfdfd;">'
         for s in sizes:
             r = marker['ratios'].get(s, 0)
-            if r > 0: html += f'<td style="color: red; padding: 8px;">{r}</td>'
-            else: html += '<td></td>'
-        html += f'<td style="color: #003399; padding: 8px;">{marker["layers"]}</td>'
-        html += f'<td style="color: #003399; padding: 8px;">{marker["sum"]}</td></tr>'
+            if r > 0: table_html += f'<td style="color: red; padding: 8px;">{r}</td>'
+            else: table_html += '<td></td>'
+        table_html += f'<td style="color: #003399; padding: 8px;">{marker["layers"]}</td>'
+        table_html += f'<td style="color: #003399; padding: 8px;">{marker["sum"]}</td></tr>'
 
-        html += '<tr style="border-bottom: 1px solid #eee;">'
+        table_html += '<tr style="border-bottom: 1px solid #eee;">'
         for i, s in enumerate(sizes):
             current_remains[i] -= marker['ratios'].get(s, 0) * marker['layers']
-            html += f'<td style="padding: 8px;">{current_remains[i]}</td>'
-        html += '<td></td><td></td></tr>'
+            table_html += f'<td style="padding: 8px;">{current_remains[i]}</td>'
+        table_html += '<td></td><td></td></tr>'
         
-    html += '</table>'
-    return html
+    table_html += '</table>'
+
+    # 🌟 生成新版的文件名：款号_年月日.png
+    safe_style = style_no.strip() if style_no else "大货排料单"
+    filename = f"{safe_style}_{date_str}.png"
+
+    full_wrapper = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+        <style>
+            .dl-btn {{
+                background-color: #0066cc; color: white; border: none;
+                padding: 8px 16px; border-radius: 4px; cursor: pointer;
+                font-size: 14px; font-weight: bold; margin-bottom: 10px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.3s;
+            }}
+            .dl-btn:hover {{ background-color: #004c99; }}
+            #capture-area {{
+                background-color: white; padding: 15px; border-radius: 5px;
+            }}
+        </style>
+    </head>
+    <body style="margin: 0; padding: 0;">
+        <button class="dl-btn" onclick="takeShot()">📸 保存为高清图片 (文件名: {filename})</button>
+        <div id="capture-area">
+            {table_html}
+        </div>
+        <script>
+            function takeShot() {{
+                const el = document.getElementById('capture-area');
+                html2canvas(el, {{ scale: 2, backgroundColor: "#ffffff" }}).then(canvas => {{
+                    let link = document.createElement('a');
+                    link.download = '{filename}';
+                    link.href = canvas.toDataURL("image/png");
+                    link.click();
+                }});
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    return full_wrapper
 
 # ================= 网页 UI 设计 =================
 st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
@@ -157,7 +206,6 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
 # 主页面：订单输入
 st.subheader("📝 步骤 1：基础信息与尺码")
 
-# 🌟 修改点 2：新增款号输入框，与尺码输入并排显示
 col_style, col_sizes = st.columns([1, 2])
 with col_style:
     style_no = st.text_input("👗 请输入服装款号（选填）：", placeholder="例如：DS-2601")
@@ -219,15 +267,13 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
                 
             st.success(f"✅ 成功找到完美方案！共使用了 **{len(markers)}** 个版。 订单需求 **{total_order_qty}** 件，实际排版产出 **{total_produced}** 件。")
             
-            # 🌟 修改点 3：如果在上方填了款号，副标题也会带上款号
-            title_text = f"📊 阶梯式扣减排料单 【款号：{style_no}】" if style_no else "📊 阶梯式扣减排料单"
+            title_text = f"📊 阶梯式扣减排料单"
             st.subheader(title_text)
             
-            # 将款号传给生成表格的函数
-            html_table = generate_html_table(valid_sizes, orders, markers, style_no)
-            st.markdown(html_table, unsafe_allow_html=True)
+            html_content = generate_html_table(valid_sizes, orders, markers, style_no)
+            components.html(html_content, height=800, scrolling=True)
             
-            st.caption("提示：表格中红字为单版配比，蓝字为拉布层数与配比和，黑字为每次扣减后的剩余订单件数。")
+            st.caption("提示：上方表格中红字为单版配比，蓝字为拉布层数与配比和，黑字为每次扣减后的剩余订单件数。点击蓝色按钮即可保存图片发给裁床。")
         else:
             st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
             st.info("💡 建议：尝试在左侧边栏放宽【总版数上限】、【配比和上限】或【单版最多尺码数】后重试。")
