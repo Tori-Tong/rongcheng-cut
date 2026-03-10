@@ -3,14 +3,16 @@ import math
 import re
 
 # ================= 核心算法 =================
-def find_best_plan(orders, ordered_sizes, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker):
+# 🌟 修改点 1：函数接收 min_layers 参数
+def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker):
     sizes = [s for s in ordered_sizes if s in orders and orders[s] > 0]
     
     best_waste = float('inf')
     best_plan = None
     best_markers = None
     
-    for L1 in range(1, max_layers + 1):
+    # 🌟 修改点 2：算法从 min_layers 开始寻找，彻底屏蔽低层数方案
+    for L1 in range(min_layers, max_layers + 1):
         for L2 in range(L1, max_layers + 1):
             current_waste = 0
             plan_ratios = {}
@@ -111,23 +113,28 @@ def generate_html_table(sizes, initial_orders, markers):
     return html
 
 # ================= 网页 UI 设计 =================
-st.set_page_config(page_title="服饰排料系统", layout="wide")
+st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
 
-st.title("✂️ 智能排料系统")
+st.title("✂️ 蓉成服饰智能排料系统")
 st.markdown("输入大货订单需求与裁床限制，一键生成最优阶梯拉布方案。")
 
 # 侧边栏：参数设置
 st.sidebar.header("⚙️ 裁床限制参数")
-max_layers = st.sidebar.number_input("最高允许层数", min_value=0, value=0)
 
-display_overage_pct = st.sidebar.slider("最高允许增裁率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
+# 🌟 修改点 3：在侧边栏新增最低层数输入框，默认最小值为 1
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    min_layers = st.number_input("最低允许层数", min_value=1, value=1)
+with col2:
+    max_layers = st.number_input("最高允许层数", min_value=0, value=0)
+
+display_overage_pct = st.sidebar.slider("最高允许溢出率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
 max_overage_pct = display_overage_pct / 100.0 
 
 max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, max_value=100, value=0)
 max_markers = st.sidebar.number_input("总版数上限", min_value=0, max_value=30, value=0)
 max_sizes_per_marker = st.sidebar.number_input("单版最多尺码数", min_value=0, max_value=20, value=0)
 
-# 🌟 新增亮点：在侧边栏加入客户合同标准备注
 st.sidebar.markdown("---")
 with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True):
     st.markdown("""
@@ -180,18 +187,22 @@ else:
 
 # 计算按钮与结果展示
 if st.button("🚀 开始计算排料方案", type="primary", use_container_width=True):
+    # 🌟 修改点 4：增加了最低层数和最高层数的逻辑校验
     if not orders:
         st.error("❌ 请至少填写一个尺码的件数！")
     elif max_layers <= 0:
         st.error("❌ 左侧的【最高允许层数】不能为 0，请先设置！")
+    elif min_layers > max_layers:
+        st.error("❌ 【最低允许层数】不能大于【最高允许层数】，请检查输入！")
     elif max_markers <= 0:
         st.error("❌ 左侧的【总版数上限】不能为 0，请先设置！")
     elif max_sizes_per_marker <= 0:
         st.error("❌ 左侧的【单版最多尺码数】不能为 0，请先设置！")
     else:
         with st.spinner("电脑正在疯狂计算最佳组合，请稍候..."):
+            # 传入 min_layers
             valid_sizes, markers = find_best_plan(
-                orders, sizes_list, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker
+                orders, sizes_list, min_layers, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker
             )
             
         if markers:
