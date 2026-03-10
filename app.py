@@ -90,7 +90,8 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process=""):
+# 🌟 修改点 1：函数接收当前设置的溢装率 (overage_pct)
+def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process="", overage_pct=0):
     date_str = datetime.now().strftime("%Y年%m月%d日")
     
     sizes_js = [str(s) for s in sizes]
@@ -136,9 +137,19 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
             current_remains[i] -= marker['ratios'].get(s, 0) * marker['layers']
             remain_val = current_remains[i]
             
+            # 🌟 修改点 2：Python 初始渲染表格时增加超标判断
+            max_allowed_extra = math.floor(initial_orders[s] * (overage_pct / 100.0))
+            
             if remain_val < 0:
-                display_text = f"增裁{abs(remain_val)}"
-                text_color = "#e65c00" 
+                extra = abs(remain_val)
+                if extra > max_allowed_extra:
+                    # 超过设定的溢装率，显示深红色并带警告
+                    display_text = f"增裁{extra} (超{overage_pct}%)"
+                    text_color = "#cc0000" 
+                else:
+                    # 正常范围内的增裁
+                    display_text = f"增裁{extra}"
+                    text_color = "#e65c00" 
                 font_weight = "bold"
             elif remain_val == 0:
                 display_text = "0"
@@ -173,7 +184,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
             .dl-btn {{ background-color: #0066cc; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.3s; }}
             .dl-btn:hover {{ background-color: #004c99; }}
             
-            /* 🌟 新增：仿 Streamlit 提示框的 CSS 样式 */
             .hint-box {{ background-color: #eef6fc; color: #004085; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; font-family: sans-serif; font-size: 14px; border: 1px solid #b8daff; border-left: 4px solid #0066cc; }}
             
             #capture-area {{ background-color: white; padding: 15px; border-radius: 5px; }}
@@ -184,7 +194,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         <button class="dl-btn" onclick="takeShot()">📸 保存为高清图片 (文件名: {filename})</button>
         
         <div class="hint-box">
-            🖱️ <b>提示：</b>这是一个“活”表格！请直接点击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的件数<b>会自动联动重新计算</b>！调整满意后点击保存图片即可。
+            🖱️ <b>提示：</b>这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数<b>会自动联动重新计算</b>！调整满意后点击保存图片即可。
         </div>
 
         <div id="capture-area">
@@ -193,6 +203,9 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         <script>
             const sizes = {json.dumps(sizes_js)};
             const initialOrders = {json.dumps(initial_orders_js)};
+            
+            // 🌟 修改点 3：将 Python 中的溢装率传给 JS 引擎
+            const overagePct = {overage_pct};
 
             function recalculate() {{
                 let currentRemains = JSON.parse(JSON.stringify(initialOrders));
@@ -219,10 +232,20 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                         let remainCell = remainRow.querySelector(`.remain-cell[data-size="` + size + `"]`);
                         let rVal = currentRemains[size];
                         
+                        // 🌟 修改点 4：JavaScript 实时计算时的超标判断
+                        let maxAllowedExtra = Math.floor(initialOrders[size] * (overagePct / 100.0));
+                        
                         if (rVal < 0) {{
-                            remainCell.innerText = "增裁" + Math.abs(rVal);
-                            remainCell.style.color = "#e65c00";
-                            remainCell.style.fontWeight = "bold";
+                            let extra = Math.abs(rVal);
+                            if (extra > maxAllowedExtra) {{
+                                remainCell.innerText = "增裁" + extra + " (超" + overagePct + "%)";
+                                remainCell.style.color = "#cc0000"; // 深红色警告
+                                remainCell.style.fontWeight = "bold";
+                            }} else {{
+                                remainCell.innerText = "增裁" + extra;
+                                remainCell.style.color = "#e65c00"; // 正常橙色
+                                remainCell.style.fontWeight = "bold";
+                            }}
                         }} else if (rVal === 0) {{
                             remainCell.innerText = "0";
                             remainCell.style.color = "#28a745";
@@ -368,10 +391,9 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             title_text = f"📊 阶梯式扣减排料单"
             st.subheader(title_text)
             
-            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process)
+            # 🌟 修改点 5：将 display_overage_pct (比如 5) 作为参数传给 HTML 表格生成器
+            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process, display_overage_pct)
             components.html(html_content, height=800, scrolling=True)
-            
-            # 🌟 修改点：已将这里原本的 st.info 提示删除，转移到了上方代码的 HTML 内容中
             
         else:
             st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
