@@ -136,7 +136,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
             current_remains[i] -= marker['ratios'].get(s, 0) * marker['layers']
             remain_val = current_remains[i]
             
-            # 🌟 修改点 1：Python 首次生成表格时，将 "超" 改为 "增裁"
             if remain_val < 0:
                 display_text = f"增裁{abs(remain_val)}"
                 text_color = "#e65c00" 
@@ -173,12 +172,21 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         <style>
             .dl-btn {{ background-color: #0066cc; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.3s; }}
             .dl-btn:hover {{ background-color: #004c99; }}
+            
+            /* 🌟 新增：仿 Streamlit 提示框的 CSS 样式 */
+            .hint-box {{ background-color: #eef6fc; color: #004085; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; font-family: sans-serif; font-size: 14px; border: 1px solid #b8daff; border-left: 4px solid #0066cc; }}
+            
             #capture-area {{ background-color: white; padding: 15px; border-radius: 5px; }}
             td[contenteditable="true"]:hover {{ background-color: #e6f7ff !important; outline: 2px dashed #1890ff; border-radius: 2px; }}
         </style>
     </head>
     <body style="margin: 0; padding: 0;">
         <button class="dl-btn" onclick="takeShot()">📸 保存为高清图片 (文件名: {filename})</button>
+        
+        <div class="hint-box">
+            🖱️ <b>提示：</b>这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数<b>会自动联动重新计算</b>！调整满意后点击保存图片即可。
+        </div>
+
         <div id="capture-area">
             {table_html}
         </div>
@@ -211,7 +219,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                         let remainCell = remainRow.querySelector(`.remain-cell[data-size="` + size + `"]`);
                         let rVal = currentRemains[size];
                         
-                        // 🌟 修改点 2：JavaScript 双击修改重算时，也将 "超" 改为 "增裁"
                         if (rVal < 0) {{
                             remainCell.innerText = "增裁" + Math.abs(rVal);
                             remainCell.style.color = "#e65c00";
@@ -261,7 +268,6 @@ col1, col2 = st.sidebar.columns(2)
 with col1:
     min_layers = st.number_input("最低层数", min_value=1, value=1)
 with col2:
-    # 🌟 修改点 3：统一将所有默认值归零
     max_layers = st.number_input("最高层数", min_value=0, value=0) 
 
 display_overage_pct = st.sidebar.number_input("溢装率 (%)", min_value=0, value=5, step=1)
@@ -365,7 +371,7 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process)
             components.html(html_content, height=800, scrolling=True)
             
-            st.info("🖱️ **提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
+            # 🌟 修改点：已将这里原本的 st.info 提示删除，转移到了上方代码的 HTML 内容中
             
         else:
             st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
