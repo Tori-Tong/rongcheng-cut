@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import math
 import re
+import json
 from datetime import datetime
 
 # ================= 核心算法 =================
@@ -83,16 +84,18 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-# 🌟 修改点：在此函数中加入日期处理逻辑
+# 🌟 核心魔法：注入 JavaScript 实时计算引擎
 def generate_html_table(sizes, initial_orders, markers, style_no=""):
-    # 获取当前年月日的中文格式
     date_str = datetime.now().strftime("%Y年%m月%d日")
+    
+    # 将初始订单数据转为供 JS 使用的格式
+    sizes_js = [str(s) for s in sizes]
+    initial_orders_js = {str(s): initial_orders[s] for s in sizes}
     
     table_html = '<table style="width:100%; text-align:center; border-collapse: collapse; font-family: sans-serif; font-size: 16px;">'
     
-    # 🌟 在表头行同时加入款号和靠右对齐的日期
     display_style = style_no if style_no else "未填"
-    table_html += f'<tr><td colspan="{len(sizes) + 2}" style="text-align:left; font-size:18px; font-weight:bold; padding:10px; border-bottom: 2px solid #333; background-color: #fff3cd;">'
+    table_html += f'<tr><td colspan="{len(sizes) + 2}" contenteditable="true" style="text-align:left; font-size:18px; font-weight:bold; padding:10px; border-bottom: 2px solid #333; background-color: #fff3cd; cursor: text;">'
     table_html += f'🏷️ 生产款号：{display_style} <span style="float:right; font-size:16px; font-weight:normal; color:#555;">📅 日期：{date_str}</span>'
     table_html += '</td></tr>'
 
@@ -106,23 +109,26 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
     table_html += '<td></td><td></td></tr>'
 
     for marker in markers:
-        table_html += '<tr style="font-weight: bold; background-color: #fdfdfd;">'
+        # 🌟 给配比行打上 marker-data-row 标记
+        table_html += '<tr class="marker-data-row" style="font-weight: bold; background-color: #fdfdfd;">'
         for s in sizes:
             r = marker['ratios'].get(s, 0)
-            if r > 0: table_html += f'<td style="color: red; padding: 8px;">{r}</td>'
-            else: table_html += '<td></td>'
-        table_html += f'<td style="color: #003399; padding: 8px;">{marker["layers"]}</td>'
-        table_html += f'<td style="color: #003399; padding: 8px;">{marker["sum"]}</td></tr>'
+            text_r = str(r) if r > 0 else ""
+            table_html += f'<td contenteditable="true" class="ratio-cell" data-size="{s}" style="color: red; padding: 8px; cursor: text;">{text_r}</td>'
+        
+        table_html += f'<td contenteditable="true" class="layer-cell" style="color: #003399; padding: 8px; cursor: text;">{marker["layers"]}</td>'
+        # 配比和不许编辑，由JS自动算
+        table_html += f'<td class="sum-cell" style="color: #003399; padding: 8px; background-color: #f0f8ff;">{marker["sum"]}</td></tr>'
 
-        table_html += '<tr style="border-bottom: 1px solid #eee;">'
+        # 🌟 给剩余件数行打上 marker-remain-row 标记
+        table_html += '<tr class="marker-remain-row" style="border-bottom: 1px solid #eee;">'
         for i, s in enumerate(sizes):
             current_remains[i] -= marker['ratios'].get(s, 0) * marker['layers']
-            table_html += f'<td style="padding: 8px;">{current_remains[i]}</td>'
+            table_html += f'<td class="remain-cell" data-size="{s}" style="padding: 8px; background-color: #fafafa;">{current_remains[i]}</td>'
         table_html += '<td></td><td></td></tr>'
         
     table_html += '</table>'
 
-    # 🌟 生成新版的文件名：款号_年月日.png
     safe_style = style_no.strip() if style_no else "大货排料单"
     filename = f"{safe_style}_{date_str}.png"
 
@@ -142,6 +148,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
             #capture-area {{
                 background-color: white; padding: 15px; border-radius: 5px;
             }}
+            td[contenteditable="true"]:hover {{
+                background-color: #e6f7ff !important;
+                outline: 2px dashed #1890ff;
+                border-radius: 2px;
+            }}
         </style>
     </head>
     <body style="margin: 0; padding: 0;">
@@ -150,6 +161,50 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
             {table_html}
         </div>
         <script>
+            // 🌟 接收 Python 传来的初始订单数据
+            const sizes = {json.dumps(sizes_js)};
+            const initialOrders = {json.dumps(initial_orders_js)};
+
+            // 🌟 核心自动计算逻辑
+            function recalculate() {{
+                // 每次修改，都从初始订单重新开始往下推算
+                let currentRemains = JSON.parse(JSON.stringify(initialOrders));
+                
+                const dataRows = document.querySelectorAll('.marker-data-row');
+                const remainRows = document.querySelectorAll('.marker-remain-row');
+
+                dataRows.forEach((row, index) => {{
+                    let ratioSum = 0;
+                    let layerText = row.querySelector('.layer-cell').innerText.trim();
+                    let layers = parseInt(layerText) || 0;
+
+                    sizes.forEach(size => {{
+                        let ratioCell = row.querySelector(`.ratio-cell[data-size="` + size + `"]`);
+                        let ratioText = ratioCell.innerText.trim();
+                        let ratio = parseInt(ratioText) || 0;
+                        ratioSum += ratio;
+                        
+                        // 扣减当前版的产出件数
+                        currentRemains[size] -= (ratio * layers);
+                    }});
+
+                    // 自动更新右侧的配比和
+                    row.querySelector('.sum-cell').innerText = ratioSum;
+
+                    // 自动更新下方的剩余件数
+                    let remainRow = remainRows[index];
+                    sizes.forEach(size => {{
+                        let remainCell = remainRow.querySelector(`.remain-cell[data-size="` + size + `"]`);
+                        remainCell.innerText = currentRemains[size];
+                    }});
+                }});
+            }}
+
+            // 🌟 监听所有可编辑单元格的输入动作
+            document.querySelectorAll('.ratio-cell, .layer-cell').forEach(cell => {{
+                cell.addEventListener('input', recalculate);
+            }});
+
             function takeShot() {{
                 const el = document.getElementById('capture-area');
                 html2canvas(el, {{ scale: 2, backgroundColor: "#ffffff" }}).then(canvas => {{
@@ -273,7 +328,9 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             html_content = generate_html_table(valid_sizes, orders, markers, style_no)
             components.html(html_content, height=800, scrolling=True)
             
-            st.caption("提示：上方表格中红字为单版配比，蓝字为拉布层数与配比和，黑字为每次扣减后的剩余订单件数。点击蓝色按钮即可保存图片发给裁床。")
+            # 🌟 更新操作提示
+            st.info("🖱️ **黑科技提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
+            
         else:
             st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
             st.info("💡 建议：尝试在左侧边栏放宽【总版数上限】、【配比和上限】或【单版最多尺码数】后重试。")
