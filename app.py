@@ -245,11 +245,11 @@ st.sidebar.header("⚙️ 裁床限制参数")
 
 col1, col2 = st.sidebar.columns(2)
 with col1:
-    min_layers = st.number_input("最低允许层数", min_value=1, value=1)
+    min_layers = st.number_input("最低层数", min_value=1, value=1)
 with col2:
-    max_layers = st.number_input("最高允许层数", min_value=0, value=0)
+    max_layers = st.number_input("最高层数", min_value=0, value=0)
 
-display_overage_pct = st.sidebar.slider("最高允许溢出率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
+display_overage_pct = st.sidebar.slider("溢装率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
 max_overage_pct = display_overage_pct / 100.0 
 
 max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, max_value=100, value=0)
