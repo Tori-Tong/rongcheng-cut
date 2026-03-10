@@ -184,7 +184,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         <button class="dl-btn" onclick="takeShot()">📸 保存为高清图片 (文件名: {filename})</button>
         
         <div class="hint-box">
-            🖱️ <b>提示：</b>这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数<b>会自动联动重新计算</b>！调整满意后点击保存图片即可。
+            🖱️ <b>提示：</b>这是一个“活”表格！请直接点击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的件数<b>会自动联动重新计算</b>！调整满意后点击保存图片即可。
         </div>
 
         <div id="capture-area">
