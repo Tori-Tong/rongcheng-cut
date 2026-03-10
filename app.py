@@ -84,19 +84,24 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-# 🌟 核心魔法：注入 JavaScript 实时计算引擎
-def generate_html_table(sizes, initial_orders, markers, style_no=""):
+def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir=""):
     date_str = datetime.now().strftime("%Y年%m月%d日")
     
-    # 将初始订单数据转为供 JS 使用的格式
     sizes_js = [str(s) for s in sizes]
     initial_orders_js = {str(s): initial_orders[s] for s in sizes}
     
     table_html = '<table style="width:100%; text-align:center; border-collapse: collapse; font-family: sans-serif; font-size: 16px;">'
     
     display_style = style_no if style_no else "未填"
-    table_html += f'<tr><td colspan="{len(sizes) + 2}" contenteditable="true" style="text-align:left; font-size:18px; font-weight:bold; padding:10px; border-bottom: 2px solid #333; background-color: #fff3cd; cursor: text;">'
-    table_html += f'🏷️ 生产款号：{display_style} <span style="float:right; font-size:16px; font-weight:normal; color:#555;">📅 日期：{date_str}</span>'
+    display_color = color if color else "未填"
+    display_cut = cut_type if cut_type else "未填"
+
+    table_html += f'<tr><td colspan="{len(sizes) + 2}" contenteditable="true" style="text-align:left; font-size:16px; font-weight:bold; padding:12px 10px; border-bottom: 2px solid #333; background-color: #fff3cd; cursor: text; line-height: 1.6;">'
+    table_html += f'🏷️ 款号：<span style="color:#c00;">{display_style}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
+    table_html += f'🎨 颜色：<span style="color:#0066cc;">{display_color}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
+    table_html += f'✂️ 裁片：{display_cut} &nbsp;&nbsp;|&nbsp;&nbsp; '
+    table_html += f'↕️ 排版：<span style="border-bottom: 2px solid #000;">{layout_dir}</span>'
+    table_html += f'<span style="float:right; font-size:15px; font-weight:normal; color:#555;">📅 日期：{date_str}</span>'
     table_html += '</td></tr>'
 
     table_html += '<tr style="border-bottom: 2px solid #ccc; background-color: #f8f9fa;">'
@@ -109,7 +114,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
     table_html += '<td></td><td></td></tr>'
 
     for marker in markers:
-        # 🌟 给配比行打上 marker-data-row 标记
         table_html += '<tr class="marker-data-row" style="font-weight: bold; background-color: #fdfdfd;">'
         for s in sizes:
             r = marker['ratios'].get(s, 0)
@@ -117,10 +121,8 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
             table_html += f'<td contenteditable="true" class="ratio-cell" data-size="{s}" style="color: red; padding: 8px; cursor: text;">{text_r}</td>'
         
         table_html += f'<td contenteditable="true" class="layer-cell" style="color: #003399; padding: 8px; cursor: text;">{marker["layers"]}</td>'
-        # 配比和不许编辑，由JS自动算
         table_html += f'<td class="sum-cell" style="color: #003399; padding: 8px; background-color: #f0f8ff;">{marker["sum"]}</td></tr>'
 
-        # 🌟 给剩余件数行打上 marker-remain-row 标记
         table_html += '<tr class="marker-remain-row" style="border-bottom: 1px solid #eee;">'
         for i, s in enumerate(sizes):
             current_remains[i] -= marker['ratios'].get(s, 0) * marker['layers']
@@ -129,8 +131,23 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
         
     table_html += '</table>'
 
-    safe_style = style_no.strip() if style_no else "大货排料单"
-    filename = f"{safe_style}_{date_str}.png"
+    # 🌟 核心修改：智能拼接文件名组合 (包含款号、颜色、裁片和日期)
+    filename_parts = []
+    if style_no.strip():
+        filename_parts.append(style_no.strip())
+    else:
+        filename_parts.append("大货排料单")
+        
+    if color.strip():
+        filename_parts.append(color.strip())
+        
+    if cut_type.strip():
+        filename_parts.append(cut_type.strip())
+        
+    filename_parts.append(date_str)
+    
+    # 用下划线把所有部分连起来，加上 .png 后缀
+    filename = "_".join(filename_parts) + ".png"
 
     full_wrapper = f"""
     <!DOCTYPE html>
@@ -161,15 +178,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
             {table_html}
         </div>
         <script>
-            // 🌟 接收 Python 传来的初始订单数据
             const sizes = {json.dumps(sizes_js)};
             const initialOrders = {json.dumps(initial_orders_js)};
 
-            // 🌟 核心自动计算逻辑
             function recalculate() {{
-                // 每次修改，都从初始订单重新开始往下推算
                 let currentRemains = JSON.parse(JSON.stringify(initialOrders));
-                
                 const dataRows = document.querySelectorAll('.marker-data-row');
                 const remainRows = document.querySelectorAll('.marker-remain-row');
 
@@ -183,15 +196,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
                         let ratioText = ratioCell.innerText.trim();
                         let ratio = parseInt(ratioText) || 0;
                         ratioSum += ratio;
-                        
-                        // 扣减当前版的产出件数
                         currentRemains[size] -= (ratio * layers);
                     }});
 
-                    // 自动更新右侧的配比和
                     row.querySelector('.sum-cell').innerText = ratioSum;
 
-                    // 自动更新下方的剩余件数
                     let remainRow = remainRows[index];
                     sizes.forEach(size => {{
                         let remainCell = remainRow.querySelector(`.remain-cell[data-size="` + size + `"]`);
@@ -200,7 +209,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no=""):
                 }});
             }}
 
-            // 🌟 监听所有可编辑单元格的输入动作
             document.querySelectorAll('.ratio-cell, .layer-cell').forEach(cell => {{
                 cell.addEventListener('input', recalculate);
             }});
@@ -259,16 +267,22 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
     """)
 
 # 主页面：订单输入
-st.subheader("📝 步骤 1：基础信息与尺码")
+st.subheader("📝 步骤 1：生产工艺与尺码信息")
 
-col_style, col_sizes = st.columns([1, 2])
+col_style, col_color, col_cut, col_layout = st.columns(4)
 with col_style:
-    style_no = st.text_input("👗 请输入服装款号（选填）：", placeholder="例如：DS-2601")
-with col_sizes:
-    size_input = st.text_input(
-        "👉 请输入这批货的所有尺码名称（空格隔开）：", 
-        value="90 100 110 120 130 140"
-    )
+    style_no = st.text_input("👗 服装款号 (选填)：", placeholder="例如：DS-2601")
+with col_color:
+    color = st.text_input("🎨 颜色 (选填)：", placeholder="例如：藏青色")
+with col_cut:
+    cut_type = st.text_input("✂️ 裁片类型 (选填)：", placeholder="例如：主身 / 撞色")
+with col_layout:
+    layout_dir = st.selectbox("↕️ 排列方式：", options=["任意", "同码同向", "件份同向", "同一方向"], index=1)
+
+size_input = st.text_input(
+    "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
+    value="90 100 110 120 130 140"
+)
 
 raw_sizes = re.split(r'[,，\s、\-]+', size_input.strip())
 sizes_list = []
@@ -325,10 +339,9 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             title_text = f"📊 阶梯式扣减排料单"
             st.subheader(title_text)
             
-            html_content = generate_html_table(valid_sizes, orders, markers, style_no)
+            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir)
             components.html(html_content, height=800, scrolling=True)
             
-            # 🌟 更新操作提示
             st.info("🖱️ **黑科技提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
             
         else:
