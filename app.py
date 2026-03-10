@@ -84,7 +84,8 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir=""):
+# 🌟 修改点 1：函数接收新的特殊工艺参数 special_process
+def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process=""):
     date_str = datetime.now().strftime("%Y年%m月%d日")
     
     sizes_js = [str(s) for s in sizes]
@@ -95,12 +96,15 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     display_style = style_no if style_no else "未填"
     display_color = color if color else "未填"
     display_cut = cut_type if cut_type else "未填"
+    display_special = special_process if special_process else "常规"
 
+    # 🌟 修改点 2：在表头把特殊工艺也印上去
     table_html += f'<tr><td colspan="{len(sizes) + 2}" contenteditable="true" style="text-align:left; font-size:16px; font-weight:bold; padding:12px 10px; border-bottom: 2px solid #333; background-color: #fff3cd; cursor: text; line-height: 1.6;">'
     table_html += f'🏷️ 款号：<span style="color:#c00;">{display_style}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
     table_html += f'🎨 颜色：<span style="color:#0066cc;">{display_color}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
     table_html += f'✂️ 裁片：{display_cut} &nbsp;&nbsp;|&nbsp;&nbsp; '
-    table_html += f'↕️ 排版：<span style="border-bottom: 2px solid #000;">{layout_dir}</span>'
+    table_html += f'↕️ 排版：<span style="border-bottom: 2px solid #000;">{layout_dir}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
+    table_html += f'✨ 工艺：<span style="color:#e65c00;">{display_special}</span>'
     table_html += f'<span style="float:right; font-size:15px; font-weight:normal; color:#555;">📅 日期：{date_str}</span>'
     table_html += '</td></tr>'
 
@@ -131,7 +135,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         
     table_html += '</table>'
 
-    # 🌟 核心修改：智能拼接文件名组合 (包含款号、颜色、裁片和日期)
+    # 🌟 修改点 3：把特殊工艺也拼接到文件名里
     filename_parts = []
     if style_no.strip():
         filename_parts.append(style_no.strip())
@@ -144,9 +148,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     if cut_type.strip():
         filename_parts.append(cut_type.strip())
         
+    if special_process.strip():
+        filename_parts.append(special_process.strip())
+        
     filename_parts.append(date_str)
     
-    # 用下划线把所有部分连起来，加上 .png 后缀
     filename = "_".join(filename_parts) + ".png"
 
     full_wrapper = f"""
@@ -269,15 +275,18 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
 # 主页面：订单输入
 st.subheader("📝 步骤 1：生产工艺与尺码信息")
 
-col_style, col_color, col_cut, col_layout = st.columns(4)
+# 🌟 修改点 4：将布局划分为 5 列，新增特殊工艺输入框
+col_style, col_color, col_cut, col_layout, col_special = st.columns(5)
 with col_style:
-    style_no = st.text_input("👗 服装款号 (选填)：", placeholder="例如：DS-2601")
+    style_no = st.text_input("👗 款号 (选填)：", placeholder="DS-2601")
 with col_color:
-    color = st.text_input("🎨 颜色 (选填)：", placeholder="例如：藏青色")
+    color = st.text_input("🎨 颜色 (选填)：", placeholder="藏青色")
 with col_cut:
-    cut_type = st.text_input("✂️ 裁片类型 (选填)：", placeholder="例如：主身 / 撞色")
+    cut_type = st.text_input("✂️ 裁片 (选填)：", placeholder="主身")
 with col_layout:
     layout_dir = st.selectbox("↕️ 排列方式：", options=["任意", "同码同向", "件份同向", "同一方向"], index=1)
+with col_special:
+    special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 对条/手工拉布")
 
 size_input = st.text_input(
     "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
@@ -339,7 +348,8 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             title_text = f"📊 阶梯式扣减排料单"
             st.subheader(title_text)
             
-            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir)
+            # 将新增加的特殊工艺传递给 HTML 生成器
+            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process)
             components.html(html_content, height=800, scrolling=True)
             
             st.info("🖱️ **黑科技提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
