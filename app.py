@@ -28,9 +28,15 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
                 
                 max_r1 = (max_allowed // L1) + 1
                 for r1 in range(max_r1 + 1):
+                    if max_ratio_sum > 0 and r1 > max_ratio_sum:
+                        continue
+                        
                     rem = target - r1 * L1
                     r2 = 0 if rem <= 0 else math.ceil(rem / L2)
                     
+                    if max_ratio_sum > 0 and r2 > max_ratio_sum:
+                        continue
+                        
                     produced = r1 * L1 + r2 * L2
                     if target <= produced <= max_allowed:
                         waste = produced - target
@@ -84,7 +90,6 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-# 🌟 修改点 1：函数接收新的特殊工艺参数 special_process
 def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process=""):
     date_str = datetime.now().strftime("%Y年%m月%d日")
     
@@ -98,7 +103,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     display_cut = cut_type if cut_type else "未填"
     display_special = special_process if special_process else "常规"
 
-    # 🌟 修改点 2：在表头把特殊工艺也印上去
     table_html += f'<tr><td colspan="{len(sizes) + 2}" contenteditable="true" style="text-align:left; font-size:16px; font-weight:bold; padding:12px 10px; border-bottom: 2px solid #333; background-color: #fff3cd; cursor: text; line-height: 1.6;">'
     table_html += f'🏷️ 款号：<span style="color:#c00;">{display_style}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
     table_html += f'🎨 颜色：<span style="color:#0066cc;">{display_color}</span> &nbsp;&nbsp;|&nbsp;&nbsp; '
@@ -130,27 +134,33 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         table_html += '<tr class="marker-remain-row" style="border-bottom: 1px solid #eee;">'
         for i, s in enumerate(sizes):
             current_remains[i] -= marker['ratios'].get(s, 0) * marker['layers']
-            table_html += f'<td class="remain-cell" data-size="{s}" style="padding: 8px; background-color: #fafafa;">{current_remains[i]}</td>'
+            remain_val = current_remains[i]
+            
+            # 🌟 修改点 1：Python 首次生成表格时，将 "超" 改为 "增裁"
+            if remain_val < 0:
+                display_text = f"增裁{abs(remain_val)}"
+                text_color = "#e65c00" 
+                font_weight = "bold"
+            elif remain_val == 0:
+                display_text = "0"
+                text_color = "#28a745" 
+                font_weight = "bold"
+            else:
+                display_text = str(remain_val)
+                text_color = "#000"
+                font_weight = "normal"
+                
+            table_html += f'<td class="remain-cell" data-size="{s}" style="padding: 8px; background-color: #fafafa; color: {text_color}; font-weight: {font_weight};">{display_text}</td>'
         table_html += '<td></td><td></td></tr>'
         
     table_html += '</table>'
 
-    # 🌟 修改点 3：把特殊工艺也拼接到文件名里
     filename_parts = []
-    if style_no.strip():
-        filename_parts.append(style_no.strip())
-    else:
-        filename_parts.append("大货排料单")
-        
-    if color.strip():
-        filename_parts.append(color.strip())
-        
-    if cut_type.strip():
-        filename_parts.append(cut_type.strip())
-        
-    if special_process.strip():
-        filename_parts.append(special_process.strip())
-        
+    if style_no.strip(): filename_parts.append(style_no.strip())
+    else: filename_parts.append("大货排料单")
+    if color.strip(): filename_parts.append(color.strip())
+    if cut_type.strip(): filename_parts.append(cut_type.strip())
+    if special_process.strip(): filename_parts.append(special_process.strip())
     filename_parts.append(date_str)
     
     filename = "_".join(filename_parts) + ".png"
@@ -161,21 +171,10 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     <head>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
         <style>
-            .dl-btn {{
-                background-color: #0066cc; color: white; border: none;
-                padding: 8px 16px; border-radius: 4px; cursor: pointer;
-                font-size: 14px; font-weight: bold; margin-bottom: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.3s;
-            }}
+            .dl-btn {{ background-color: #0066cc; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.3s; }}
             .dl-btn:hover {{ background-color: #004c99; }}
-            #capture-area {{
-                background-color: white; padding: 15px; border-radius: 5px;
-            }}
-            td[contenteditable="true"]:hover {{
-                background-color: #e6f7ff !important;
-                outline: 2px dashed #1890ff;
-                border-radius: 2px;
-            }}
+            #capture-area {{ background-color: white; padding: 15px; border-radius: 5px; }}
+            td[contenteditable="true"]:hover {{ background-color: #e6f7ff !important; outline: 2px dashed #1890ff; border-radius: 2px; }}
         </style>
     </head>
     <body style="margin: 0; padding: 0;">
@@ -210,7 +209,22 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                     let remainRow = remainRows[index];
                     sizes.forEach(size => {{
                         let remainCell = remainRow.querySelector(`.remain-cell[data-size="` + size + `"]`);
-                        remainCell.innerText = currentRemains[size];
+                        let rVal = currentRemains[size];
+                        
+                        // 🌟 修改点 2：JavaScript 双击修改重算时，也将 "超" 改为 "增裁"
+                        if (rVal < 0) {{
+                            remainCell.innerText = "增裁" + Math.abs(rVal);
+                            remainCell.style.color = "#e65c00";
+                            remainCell.style.fontWeight = "bold";
+                        }} else if (rVal === 0) {{
+                            remainCell.innerText = "0";
+                            remainCell.style.color = "#28a745";
+                            remainCell.style.fontWeight = "bold";
+                        }} else {{
+                            remainCell.innerText = rVal;
+                            remainCell.style.color = "#000";
+                            remainCell.style.fontWeight = "normal";
+                        }}
                     }});
                 }});
             }}
@@ -247,14 +261,15 @@ col1, col2 = st.sidebar.columns(2)
 with col1:
     min_layers = st.number_input("最低层数", min_value=1, value=1)
 with col2:
-    max_layers = st.number_input("最高层数", min_value=0, value=0)
+    # 🌟 修改点 3：统一将所有默认值归零
+    max_layers = st.number_input("最高层数", min_value=0, value=0) 
 
-display_overage_pct = st.sidebar.slider("溢装率 (%)", min_value=0, max_value=200, value=5, step=1, format="%d%%")
+display_overage_pct = st.sidebar.number_input("溢装率 (%)", min_value=0, value=5, step=1)
 max_overage_pct = display_overage_pct / 100.0 
 
-max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, max_value=100, value=0)
-max_markers = st.sidebar.number_input("总版数上限", min_value=0, max_value=30, value=0)
-max_sizes_per_marker = st.sidebar.number_input("单版最多尺码数", min_value=0, max_value=20, value=0)
+max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, value=0)
+max_markers = st.sidebar.number_input("总版数上限", min_value=0, value=0)
+max_sizes_per_marker = st.sidebar.number_input("单版最多尺码数", min_value=0, value=0)
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True):
@@ -275,7 +290,6 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
 # 主页面：订单输入
 st.subheader("📝 步骤 1：生产工艺与尺码信息")
 
-# 🌟 修改点 4：将布局划分为 5 列，新增特殊工艺输入框
 col_style, col_color, col_cut, col_layout, col_special = st.columns(5)
 with col_style:
     style_no = st.text_input("👗 款号 (选填)：", placeholder="RC-001")
@@ -348,11 +362,10 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
             title_text = f"📊 阶梯式扣减排料单"
             st.subheader(title_text)
             
-            # 将新增加的特殊工艺传递给 HTML 生成器
             html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process)
             components.html(html_content, height=800, scrolling=True)
             
-            st.info("🖱️ **提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
+            st.info("🖱️ **黑科技提示**：这是一个“活”表格！请直接双击修改红色的【配比】或蓝色的【层数】，旁边所有的配比和与下方的剩余件数**会自动联动重新计算**！调整满意后点击保存图片即可。")
             
         else:
             st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
