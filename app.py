@@ -209,11 +209,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                     font_weight = "bold"
                 elif remain_val > 0:
                     display_text = str(remain_val)
-                    text_color = "#0066cc" 
+                    text_color = "#0066cc" # 🌟 蓝色代表需要借
                     font_weight = "bold"
                 else:
                     display_text = "0"
-                    text_color = "#28a745" 
+                    text_color = "#28a745" # 🌟 绿色代表完美的0
                     font_weight = "bold"
             else:
                 display_text = str(remain_val)
@@ -252,9 +252,10 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         
         if raw_val < 0:
             extra = abs(raw_val)
-            color = "#cc0000" if extra > max_allowed_extra else "#e65c00"
+            # 🌟 修复点：改名为 txt_color 彻底防止和颜色(color)参数重名导致的bug
+            txt_color = "#cc0000" if extra > max_allowed_extra else "#e65c00"
             warn = f"<br><span style='font-size:12px;color:#cc0000; font-weight:normal;'>(超{overage_pct}%)</span>" if extra > max_allowed_extra else ""
-            cell_html += f"<div style='font-size:16px; font-weight:bold; color:{color};'>增裁{extra}{warn}</div>"
+            cell_html += f"<div style='font-size:16px; font-weight:bold; color:{txt_color};'>增裁{extra}{warn}</div>"
             if extra > max_allowed_extra:
                 has_global_overage = True
                 
@@ -270,6 +271,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     display_style_warning = "block" if has_global_overage else "none"
     table_html += f'<div id="overage-warning" style="display: {display_style_warning}; color: #cc0000; font-weight: bold; margin-top: 15px; padding: 10px; background-color: #ffe6e6; border: 1px solid #ffcccc; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深红色）的增裁件数已超出设定的 {overage_pct}% 溢装率上限！</div>'
 
+    # 🌟 文件名生成，因为上面的冲突已解决，这里拿到的 color 绝对纯净
     filename_parts = []
     if style_no.strip(): filename_parts.append(style_no.strip())
     else: filename_parts.append("大货排料单")
@@ -359,9 +361,9 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                             if (rVal < 0) {{
                                 remainCell.style.color = (Math.abs(rVal) > maxAllowedExtra) ? "#cc0000" : "#e65c00";
                             }} else if (rVal > 0) {{
-                                remainCell.style.color = "#0066cc"; 
+                                remainCell.style.color = "#0066cc"; // 蓝色
                             }} else {{
-                                remainCell.style.color = "#28a745"; 
+                                remainCell.style.color = "#28a745"; // 绿色
                             }}
                             remainCell.style.fontWeight = "bold";
                         }} else {{
@@ -412,9 +414,9 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                     
                     if (rawVal < 0) {{
                         let extra = Math.abs(rawVal);
-                        let color = (extra > maxAllowedExtra) ? "#cc0000" : "#e65c00";
+                        let txtColor = (extra > maxAllowedExtra) ? "#cc0000" : "#e65c00";
                         let warn = (extra > maxAllowedExtra) ? `<br><span style='font-size:12px;color:#cc0000; font-weight:normal;'>(超${{overagePct}}%)</span>` : "";
-                        cellHtml += `<div style='font-size:16px; font-weight:bold; color:${{color}};'>增裁${{extra}}${{warn}}</div>`;
+                        cellHtml += `<div style='font-size:16px; font-weight:bold; color:${{txtColor}};'>增裁${{extra}}${{warn}}</div>`;
                         if (extra > maxAllowedExtra) hasGlobalOverage = true;
                     }}
                     
@@ -576,20 +578,19 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
     else:
         with st.spinner("电脑正在疯狂计算全局最优组合，请稍候..."):
             
-            # 🌟 永远先算全局最优，绝不牺牲面料
+            # 🌟 修复：永远只算一次完整的全局最优，绝不牺牲面料去排1层碎版
             valid_sizes, markers = find_best_plan(
                 orders, sizes_list, min_layers, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small
             )
             
             if markers:
                 if enable_priority and priority_orders:
-                    # 🌟 智能分拣算法：把包含急需件数的好版，直接抽调到最前面！
+                    # 🌟 智能分拣算法：像“洗牌”一样把包含急需件数的厚层大版抽调到最前面
                     priority_markers = []
                     normal_markers = markers.copy()
                     current_yield = {s: 0 for s in priority_orders}
                     
                     while normal_markers:
-                        # 检查急单是否已经全部满足
                         all_met = True
                         for s, target in priority_orders.items():
                             if current_yield[s] < target:
@@ -598,7 +599,6 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
                         if all_met:
                             break
                             
-                        # 在剩下的版里，挑出对急单贡献最大的那一个版
                         best_idx = -1
                         best_score = -1
                         
@@ -614,9 +614,8 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
                                 best_idx = idx
                                 
                         if best_score == 0:
-                            break # 剩下的版里都没有我们要的急单尺码了
+                            break 
                             
-                        # 把这个最优的版抽出来，放进优先队列
                         chosen = normal_markers.pop(best_idx)
                         chosen['is_priority'] = True
                         priority_markers.append(chosen)
@@ -627,7 +626,6 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
                     for m in normal_markers:
                         m['is_priority'] = False
                         
-                    # 重新拼合队伍：急单排前面，常规跟在后面
                     markers = priority_markers + normal_markers
                 else:
                     for m in markers:
