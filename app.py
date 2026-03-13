@@ -146,9 +146,9 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     display_special = special_process.strip() if special_process.strip() else "常规"
     if allow_large_to_small:
         if display_special == "常规":
-            display_special = "大改小抵扣"
+            display_special = "大改小"
         else:
-            display_special += " (大改小抵扣)"
+            display_special += " (大改小)"
     header_parts.append(f'✨ 工艺：<span style="color:#e65c00;">{display_special}</span>')
 
     header_content = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join(header_parts)
