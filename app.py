@@ -549,7 +549,7 @@ with col_pct1:
     display_overage_pct = st.number_input("溢装率 (%)", min_value=0, value=5, step=1)
     max_overage_pct = display_overage_pct / 100.0 
 with col_pct2:
-    display_shortage_pct = st.number_input("允许短装率 (%)", min_value=0, value=0, step=1)
+    display_shortage_pct = st.number_input("短装率 (%)", min_value=0, value=0, step=1)
     max_shortage_pct = display_shortage_pct / 100.0 
 
 max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, value=0)
