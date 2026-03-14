@@ -6,7 +6,10 @@ import json
 from datetime import datetime
 
 # ================= 核心算法 =================
-def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small):
+def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pct, max_shortage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small, allow_shortage, global_orders=None):
+    if global_orders is None:
+        global_orders = orders
+        
     sizes = [s for s in ordered_sizes if s in orders and orders[s] > 0]
     
     best_waste = float('inf')
@@ -27,18 +30,24 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
             
             for size in process_sizes:
                 target = orders[size]
-                max_allowed = math.floor(target * (1 + max_overage_pct))
+                max_allowed = math.floor(global_orders[size] * (1 + max_overage_pct))
+                
+                if allow_shortage:
+                    allowed_short = math.floor(target * max_shortage_pct)
+                    base_target = max(1, target - allowed_short) if target > 0 else 0
+                else:
+                    base_target = target
                 
                 if allow_large_to_small:
-                    net_target = max(0, target - inherited_excess)
+                    net_target = max(0, base_target - inherited_excess)
                     max_prod_allowed = max(0, max_allowed - inherited_excess)
                     
-                    if net_target == 0:
+                    if net_target == 0 and max_prod_allowed == 0:
                         plan_ratios[size] = [0, 0]
-                        inherited_excess = inherited_excess - target
+                        inherited_excess = max(0, inherited_excess - target)
                         continue
                 else:
-                    net_target = target
+                    net_target = base_target
                     max_prod_allowed = max_allowed
                 
                 min_waste_for_size = float('inf')
@@ -58,8 +67,8 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
                     produced = r1 * L1 + r2 * L2
                     total_available = produced + (inherited_excess if allow_large_to_small else 0)
                     
-                    if target <= total_available <= max_allowed:
-                        waste = total_available - target
+                    if base_target <= total_available <= max_allowed:
+                        waste = total_available - base_target 
                         if waste < min_waste_for_size:
                             min_waste_for_size = waste
                             best_r1, best_r2 = r1, r2
@@ -70,7 +79,9 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
                 else:
                     plan_ratios[size] = [best_r1, best_r2]
                     if allow_large_to_small:
-                        inherited_excess = min_waste_for_size
+                        actual_produced = best_r1 * L1 + best_r2 * L2
+                        total_physical = actual_produced + inherited_excess
+                        inherited_excess = max(0, total_physical - target)
                     else:
                         current_waste += min_waste_for_size
                     
@@ -125,7 +136,7 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process="", overage_pct=0, allow_large_to_small=False):
+def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process="", overage_pct=0, shortage_pct=0, allow_large_to_small=False):
     date_str = datetime.now().strftime("%Y年%m月%d日")
     
     sizes_js = [str(s) for s in sizes]
@@ -134,21 +145,15 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     table_html = '<table style="width:100%; text-align:center; border-collapse: collapse; font-family: sans-serif; font-size: 16px;">'
     
     header_parts = []
-    if style_no.strip():
-        header_parts.append(f'🏷️ 款号：<span style="color:#c00;">{style_no.strip()}</span>')
-    if color.strip():
-        header_parts.append(f'🎨 颜色：<span style="color:#0066cc;">{color.strip()}</span>')
-    if cut_type.strip():
-        header_parts.append(f'✂️ 裁片：{cut_type.strip()}')
-        
+    if style_no.strip(): header_parts.append(f'🏷️ 款号：<span style="color:#c00;">{style_no.strip()}</span>')
+    if color.strip(): header_parts.append(f'🎨 颜色：<span style="color:#0066cc;">{color.strip()}</span>')
+    if cut_type.strip(): header_parts.append(f'✂️ 裁片：{cut_type.strip()}')
     header_parts.append(f'↕️ 排版：<span style="border-bottom: 2px solid #000;">{layout_dir}</span>')
     
     display_special = special_process.strip() if special_process.strip() else "常规"
     if allow_large_to_small:
-        if display_special == "常规":
-            display_special = "大改小"
-        else:
-            display_special += " (大改小)"
+        if display_special == "常规": display_special = "大改小抵扣"
+        else: display_special += " (大改小抵扣)"
     header_parts.append(f'✨ 工艺：<span style="color:#e65c00;">{display_special}</span>')
 
     header_content = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join(header_parts)
@@ -168,27 +173,43 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     table_html += '<td></td><td></td></tr>'
 
     has_global_overage = False
+    has_global_shortage = False
     auto_note_text = ""
 
     for marker_idx, marker in enumerate(markers):
         is_last_row = (marker_idx == len(markers) - 1)
         is_priority = marker.get('is_priority', False)
+        is_tail = marker.get('is_tail', False) 
         
-        bg_color = "#fff2f2" if is_priority else "#fdfdfd"
+        row_class = "marker-data-row is-tail-row" if is_tail else "marker-data-row"
         
-        table_html += f'<tr class="marker-data-row" style="font-weight: bold; background-color: {bg_color};">'
+        if is_tail:
+            bg_color = "#fff0f5" 
+            badge = f'<br><span style="font-size:11px; color:#c00055; font-weight:bold;">🔥清尾加层<br>(同第{marker.get("source_idx", 1)}版)</span>'
+            sum_bg = "#ffe4e1"
+        elif is_priority:
+            bg_color = "#fff2f2"
+            badge = '<br><span style="font-size:11px; color:#cc0000; font-weight:normal;">⚡优先</span>'
+            sum_bg = "#ffe6e6"
+        else:
+            bg_color = "#fdfdfd"
+            badge = ''
+            sum_bg = "#f0f8ff"
+        
+        table_html += f'<tr class="{row_class}" style="font-weight: bold; background-color: {bg_color};">'
         for s in sizes:
             r = marker['ratios'].get(s, 0)
             text_r = str(r) if r > 0 else ""
             table_html += f'<td contenteditable="true" class="ratio-cell" data-size="{s}" style="color: red; padding: 8px; cursor: text;">{text_r}</td>'
         
-        table_html += f'<td contenteditable="true" class="layer-cell" style="color: #003399; padding: 8px; cursor: text;">{marker["layers"]}</td>'
-        
+        if is_tail:
+            table_html += f'<td contenteditable="true" class="layer-cell" style="color: #c00055; font-weight:bold; background-color: #ffebf0; padding: 8px; cursor: text;" title="双击输入师傅实际拉的层数">{marker["layers"]}</td>'
+        else:
+            table_html += f'<td contenteditable="true" class="layer-cell" style="color: #003399; padding: 8px; cursor: text;">{marker["layers"]}</td>'
+            
         sum_val = marker['sum']
         text_sum = str(sum_val) if sum_val != "" else ""
-        badge = '<br><span style="font-size:11px; color:#cc0000; font-weight:normal;">⚡优先</span>' if is_priority else ''
-        sum_bg = "#ffe6e6" if is_priority else "#f0f8ff"
-        table_html += f'<td class="sum-cell" style="color: #003399; padding: 8px; background-color: {sum_bg};">{text_sum}{badge}</td></tr>'
+        table_html += f'<td class="sum-cell" style="color: #003399; padding: 8px; background-color: {sum_bg};"><span class="sum-number">{text_sum}</span>{badge}</td></tr>'
 
         table_html += '<tr class="marker-remain-row" style="border-bottom: 1px solid #eee;">'
         
@@ -201,6 +222,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         for i, s in enumerate(sizes):
             remain_val = display_remains[i]
             max_allowed_extra = math.floor(initial_orders[s] * (overage_pct / 100.0))
+            max_allowed_short = math.floor(initial_orders[s] * (shortage_pct / 100.0))
             
             if is_last_row:
                 if remain_val < 0:
@@ -209,11 +231,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                     font_weight = "bold"
                 elif remain_val > 0:
                     display_text = str(remain_val)
-                    text_color = "#0066cc" # 🌟 蓝色代表需要借
+                    text_color = "#003399" if remain_val > max_allowed_short else "#0066cc" 
                     font_weight = "bold"
                 else:
                     display_text = "0"
-                    text_color = "#28a745" # 🌟 绿色代表完美的0
+                    text_color = "#28a745" 
                     font_weight = "bold"
             else:
                 display_text = str(remain_val)
@@ -246,32 +268,43 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     table_html += '<tr id="final-overcut-row" style="background-color: #fff7e6; border-top: 2px solid #666; border-bottom: 2px solid #666;">'
     for i, s in enumerate(sizes):
         raw_val = current_remains[i] 
+        net_val = final_display_remains[i] 
         max_allowed_extra = math.floor(initial_orders[s] * (overage_pct / 100.0))
+        max_allowed_short = math.floor(initial_orders[s] * (shortage_pct / 100.0))
         
         cell_html = ""
         
         if raw_val < 0:
             extra = abs(raw_val)
-            # 🌟 修复点：改名为 txt_color 彻底防止和颜色(color)参数重名导致的bug
             txt_color = "#cc0000" if extra > max_allowed_extra else "#e65c00"
-            warn = f"<br><span style='font-size:12px;color:#cc0000; font-weight:normal;'>(超{overage_pct}%)</span>" if extra > max_allowed_extra else ""
+            warn = f"<br><span style='font-size:12px;color:#cc0000; font-weight:normal;'>(超溢装{overage_pct}%)</span>" if extra > max_allowed_extra else ""
             cell_html += f"<div style='font-size:16px; font-weight:bold; color:{txt_color};'>增裁{extra}{warn}</div>"
             if extra > max_allowed_extra:
                 has_global_overage = True
+        
+        elif net_val > 0:
+            short = net_val
+            txt_color = "#003399" if short > max_allowed_short else "#0066cc"
+            warn = f"<br><span style='font-size:12px;color:#003399; font-weight:normal;'>(超短缺{shortage_pct}%)</span>" if short > max_allowed_short else ""
+            cell_html += f"<div style='font-size:16px; font-weight:bold; color:{txt_color};'>少裁{short}{warn}</div>"
+            if short > max_allowed_short:
+                has_global_shortage = True
                 
         for msg in substitutions_map[s]:
             cell_html += f"<div style='font-size:13px; font-weight:bold; color:#0066cc; margin-top:6px;'>{msg}</div>"
             
         table_html += f'<td class="final-overcut-cell" data-size="{s}" style="padding: 12px 8px; vertical-align: top;">{cell_html}</td>'
             
-    table_html += '<td colspan="2" style="padding: 12px 8px; color: #555; font-size: 15px; vertical-align: middle; font-weight: bold; text-align: left;">👈 实际增裁汇总</td></tr>'
+    table_html += '<td colspan="2" style="padding: 12px 8px; color: #555; font-size: 15px; vertical-align: middle; font-weight: bold; text-align: left;">👈 实际增/减裁汇总</td></tr>'
     
     table_html += '</table>'
 
-    display_style_warning = "block" if has_global_overage else "none"
-    table_html += f'<div id="overage-warning" style="display: {display_style_warning}; color: #cc0000; font-weight: bold; margin-top: 15px; padding: 10px; background-color: #ffe6e6; border: 1px solid #ffcccc; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深红色）的增裁件数已超出设定的 {overage_pct}% 溢装率上限！</div>'
+    display_style_overage = "block" if has_global_overage else "none"
+    table_html += f'<div id="overage-warning" style="display: {display_style_overage}; color: #cc0000; font-weight: bold; margin-top: 15px; padding: 10px; background-color: #ffe6e6; border: 1px solid #ffcccc; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深红色）的增裁件数已超出设定的 {overage_pct}% 溢装率上限！</div>'
+    
+    display_style_shortage = "block" if has_global_shortage else "none"
+    table_html += f'<div id="shortage-warning" style="display: {display_style_shortage}; color: #003399; font-weight: bold; margin-top: 10px; padding: 10px; background-color: #e6f0ff; border: 1px solid #b3d1ff; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深蓝色）的少裁件数已超出设定的 {shortage_pct}% 短装率下限！</div>'
 
-    # 🌟 文件名生成，因为上面的冲突已解决，这里拿到的 color 绝对纯净
     filename_parts = []
     if style_no.strip(): filename_parts.append(style_no.strip())
     else: filename_parts.append("大货排料单")
@@ -304,7 +337,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         <button class="dl-btn" onclick="takeShot()">📸 保存为高清图片 (文件名: {filename})</button>
         
         <div class="hint-box">
-            🖱️ <b>功能提示：</b>双击红/蓝数字即可微调。<br>带有 <b style="color:#c00;">⚡优先</b> 标记的版会被置顶先裁；开启大改小后会自动在底部生成改码明细！
+            🖱️ <b>功能提示：</b>双击红/蓝数字即可微调。<br>带有 <b style="color:#c00;">⚡优先</b> 或 <b style="color:#c00055;">🔥清尾</b> 标记的版请车间重点关注；修改层数后，底部结余会自动重算联动！
         </div>
 
         <div id="capture-area">
@@ -321,6 +354,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
             const sizes = {json.dumps(sizes_js)};
             const initialOrders = {json.dumps(initial_orders_js)};
             const overagePct = {overage_pct};
+            const shortagePct = {shortage_pct};
             const allowLargeToSmall = {str(allow_large_to_small).lower()};
 
             function recalculate() {{
@@ -329,6 +363,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                 const remainRows = document.querySelectorAll('.marker-remain-row');
                 
                 let hasGlobalOverage = false; 
+                let hasGlobalShortage = false; 
 
                 dataRows.forEach((row, index) => {{
                     let isLastRow = (index === dataRows.length - 1);
@@ -345,7 +380,10 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                         currentRemains[size] -= (ratio * layers);
                     }});
 
-                    row.querySelector('.sum-cell').childNodes[0].nodeValue = ratioSum > 0 ? ratioSum : "";
+                    let sumNumEl = row.querySelector('.sum-number');
+                    if (sumNumEl) {{
+                        sumNumEl.innerText = ratioSum > 0 ? ratioSum : "";
+                    }}
 
                     let remainRow = remainRows[index];
                     let displayRemains = JSON.parse(JSON.stringify(currentRemains));
@@ -354,6 +392,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                         let remainCell = remainRow.querySelector(`.remain-cell[data-size="` + size + `"]`);
                         let rVal = displayRemains[size];
                         let maxAllowedExtra = Math.floor(initialOrders[size] * (overagePct / 100.0));
+                        let maxAllowedShort = Math.floor(initialOrders[size] * (shortagePct / 100.0));
                         
                         remainCell.innerText = rVal; 
                         
@@ -361,9 +400,9 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                             if (rVal < 0) {{
                                 remainCell.style.color = (Math.abs(rVal) > maxAllowedExtra) ? "#cc0000" : "#e65c00";
                             }} else if (rVal > 0) {{
-                                remainCell.style.color = "#0066cc"; // 蓝色
+                                remainCell.style.color = (rVal > maxAllowedShort) ? "#003399" : "#0066cc"; 
                             }} else {{
-                                remainCell.style.color = "#28a745"; // 绿色
+                                remainCell.style.color = "#28a745"; 
                             }}
                             remainCell.style.fontWeight = "bold";
                         }} else {{
@@ -408,16 +447,25 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                 sizes.forEach(size => {{
                     let finalCell = document.querySelector(`.final-overcut-cell[data-size="` + size + `"]`);
                     let rawVal = currentRemains[size];
+                    let netVal = finalRemains[size];
                     let maxAllowedExtra = Math.floor(initialOrders[size] * (overagePct / 100.0));
+                    let maxAllowedShort = Math.floor(initialOrders[size] * (shortagePct / 100.0));
                     
                     let cellHtml = "";
                     
                     if (rawVal < 0) {{
                         let extra = Math.abs(rawVal);
                         let txtColor = (extra > maxAllowedExtra) ? "#cc0000" : "#e65c00";
-                        let warn = (extra > maxAllowedExtra) ? `<br><span style='font-size:12px;color:#cc0000; font-weight:normal;'>(超${{overagePct}}%)</span>` : "";
+                        let warn = (extra > maxAllowedExtra) ? `<br><span style='font-size:12px;color:#cc0000; font-weight:normal;'>(超溢装${{overagePct}}%)</span>` : "";
                         cellHtml += `<div style='font-size:16px; font-weight:bold; color:${{txtColor}};'>增裁${{extra}}${{warn}}</div>`;
                         if (extra > maxAllowedExtra) hasGlobalOverage = true;
+                        
+                    }} else if (netVal > 0) {{ 
+                        let short = netVal;
+                        let txtColor = (short > maxAllowedShort) ? "#003399" : "#0066cc";
+                        let warn = (short > maxAllowedShort) ? `<br><span style='font-size:12px;color:#003399; font-weight:normal;'>(超短缺${{shortagePct}}%)</span>` : "";
+                        cellHtml += `<div style='font-size:16px; font-weight:bold; color:${{txtColor}};'>少裁${{short}}${{warn}}</div>`;
+                        if (short > maxAllowedShort) hasGlobalShortage = true;
                     }}
                     
                     subMap[size].forEach(msg => {{
@@ -427,10 +475,11 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                     finalCell.innerHTML = cellHtml;
                 }});
 
-                let warningBox = document.getElementById('overage-warning');
-                if (warningBox) {{
-                    warningBox.style.display = hasGlobalOverage ? 'block' : 'none';
-                }}
+                let warningBoxOv = document.getElementById('overage-warning');
+                if (warningBoxOv) warningBoxOv.style.display = hasGlobalOverage ? 'block' : 'none';
+                
+                let warningBoxSh = document.getElementById('shortage-warning');
+                if (warningBoxSh) warningBoxSh.style.display = hasGlobalShortage ? 'block' : 'none';
             }}
 
             document.querySelectorAll('.ratio-cell, .layer-cell').forEach(cell => {{
@@ -455,6 +504,39 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
 # ================= 网页 UI 设计 =================
 st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
 
+with st.sidebar.expander("📖 蓉成服饰排料系统 · 帮助指南", expanded=False):
+    st.markdown("""
+    <div style="font-size: 14px; line-height: 1.6; color: #333;">
+        <b>1️⃣ 核心排料逻辑：为什么是“大码套小码”？</b><br>
+        为了追求极致的面料利用率，系统在计算排版时，默认采用了<b>“大码套小码 (首尾穿插套排)”</b>的智能逻辑。系统会优先抓取一个最大码配一个最小码，将它们穿插组合。这样大片与小片互补，不仅能让排料图极其紧凑，还能保证每拉一床布，产出的尺码分布更加均匀。<br><br>
+
+        <b>2️⃣ 灵活控层：如何控制拉布层数与画样长度？</b>
+        <ul style="margin-top: 5px;">
+            <li><b>面料太厚？</b> 当【最高层数】被限制得很低（如30层）时，系统会自动<b>增加单版配比和</b>（把版画长一点）来凑够件数。</li>
+            <li><b>裁床太短？</b> 你可以设置【配比和上限】（如限制一版最多画7件）。此时系统会自动<b>增加拉布层数</b>。</li>
+            <li>💡 <b>秘诀</b>：若不受限，建议将【配比和上限】保留为“0（不限制）”。手动微调表格时，直接双击蓝色的“层数”或红色的“配比”，底部结余会自动重算。</li>
+        </ul>
+
+        <b>3️⃣ “大改小”功能：借件抵扣的妙用与禁忌</b><br>
+        开启「大改小」后，大码多裁的废布会被直接利用填补小码的缺口，底部会生成蓝字 <code>↘改XX码</code>。<br>
+        <span style="color: #c00;"><b>⚠️ 核心警告（极度重要）</b></span>：“大改小”功能<b>仅适用于常规可自由改刀的对称裁片</b>！如果当前款式属于：<b>1.不对称花型 / 2.条格面料（对条对格） / 3.极度不规则裁片</b>，请<b>务必关闭</b>此功能！<br><br>
+
+        <b>4️⃣ 优先急单：既要赶进度，又要省面料</b><br>
+        如果车间急需某些尺码先上线，请勾选【步骤3：优先急单】。系统<b>不会</b>为了急单去单独拉1层、2层布，而是会在全局最优的厚层大版中，直接把<b>刚好包含你急需尺码的大货版</b>抽调并置顶，带有 <b style='color:#c00;'>⚡优先</b> 标记的版请优先安排拉布！<br><br>
+
+        <b>5️⃣ 面料不足模式（允许短装）：来料不够怎么排？</b><br>
+        当遇到面料来料不足，或瑕疵太多导致无法凑齐完整订单时，请使用此功能。
+        <ul style="margin-top: 5px;">
+            <li><b>等比例平衡缩减</b>：系统不再“宁超勿缺”，而是会在你允许的短缺范围内，<b>将所有尺码等比例缩减</b>（尽可能少排件数）以最大化节省面料。底部汇总行会用蓝色标出少裁的数量。</li>
+            <li><b>死守底线</b>：系统绝对遵守“不断码”红线。即便短装率设得很高，任何有订单的尺码都<b>至少会产出 1 件</b>。</li>
+            <li><b>终极省布组合</b>：如果同时开启【大改小】和【面料不足】，系统会利用大码余量补小码，结合整体缩减，把有限的面料抠出最大价值！</li>
+        </ul>
+        
+        <b>6️⃣ 面料清尾建议：布多了怎么顺手用掉？</b><br>
+        实际车间里，为了一点尾料重新画版极其浪费。勾选【步骤4】，选择你想多要的尺码，系统会自动从算好的大货版中，挑出<b>最合适的一版原版画样</b>复制到表格最下方。师傅无需新画麦架，直接用原版多拉几层即可！表格默认加层数为 <code>0</code>，双击输入师傅实际拉的层数，底部结余和“大改小”会自动完美联动平账！
+    </div>
+    """, unsafe_allow_html=True)
+
 st.title("✂️ 蓉成服饰智能排料系统")
 st.markdown("输入大货订单需求与裁床限制，一键生成最优阶梯拉布方案。")
 
@@ -467,8 +549,13 @@ with col1:
 with col2:
     max_layers = st.number_input("最高层数", min_value=0, value=0) 
 
-display_overage_pct = st.sidebar.number_input("溢装率 (%)", min_value=0, value=5, step=1)
-max_overage_pct = display_overage_pct / 100.0 
+col_pct1, col_pct2 = st.sidebar.columns(2)
+with col_pct1:
+    display_overage_pct = st.number_input("溢装率 (%)", min_value=0, value=5, step=1)
+    max_overage_pct = display_overage_pct / 100.0 
+with col_pct2:
+    display_shortage_pct = st.number_input("允许短装率 (%)", min_value=0, value=0, step=1)
+    max_shortage_pct = display_shortage_pct / 100.0 
 
 max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, value=0)
 max_markers = st.sidebar.number_input("总版数上限", min_value=0, value=0)
@@ -479,6 +566,12 @@ allow_large_to_small = st.sidebar.checkbox(
     "✨ 开启「大改小」允许", 
     value=False, 
     help="勾选后，排版时右侧大尺码多余的件数会自动向左填补小尺码的缺口。注意：仅适用于可自由裁减的常规裁片！"
+)
+
+allow_shortage = st.sidebar.checkbox(
+    "✂️ 面料不足模式 (优先向下取数)", 
+    value=False, 
+    help="来料不够时勾选此项。系统会在您设定的“允许短装率”范围内，尽可能少排件数以节省面料。但系统死守底线，绝不断码！"
 )
 
 st.sidebar.markdown("---")
@@ -510,7 +603,7 @@ with col_cut:
 with col_layout:
     layout_dir = st.selectbox("↕️ 排列方式：", options=["任意", "同码同向", "件份同向", "同一方向"], index=1)
 with col_special:
-    special_process = st.text_input("✨ 特殊 (选填)：", placeholder="如: 加衬/对条/手拉")
+    special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
 
 size_input = st.text_input(
     "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
@@ -538,22 +631,35 @@ else:
 
 st.write("---")
 
-# 🌟 步骤 3：优先急单提取
-st.subheader("⏱️ 步骤 3：优先急单设置 (选填)")
-enable_priority = st.checkbox("✨ 启用优先急单 (系统将在全局最优排版中，优先置顶急需的尺码)")
-priority_orders = {}
+# 🌟 新增：并列排布的 UI 设计
+col_step3, col_step4 = st.columns(2)
 
-if enable_priority:
-    st.info("💡 提示：为了保证面料利用率最大化，系统不会产生1层的碎版，而是会将**包含了你急需尺码的大货排版直接提前**！")
-    pri_sizes = st.multiselect("👉 选择急需先裁的尺码：", options=[s for s in sizes_list if orders.get(s, 0) > 0])
-    if pri_sizes:
-        cols_pri = st.columns(min(len(pri_sizes), 6))
-        for i, size in enumerate(pri_sizes):
-            with cols_pri[i % 6]:
-                max_v = orders.get(size, 0)
-                p_val = st.number_input(f"【 {size} 】急需件数", min_value=0, max_value=max_v, value=min(max_v, 50), step=10, key=f"pri_{size}")
-                if p_val > 0:
-                    priority_orders[size] = p_val
+with col_step3:
+    st.subheader("⏱️ 步骤 3：优先急单设置")
+    enable_priority = st.checkbox("✨ 启用优先急单 (将包含急需尺码的版置顶)")
+    priority_orders = {}
+    
+    if enable_priority:
+        st.info("💡 提示：系统不会产生碎版，而是会将包含你急需尺码的大货排版直接提前！")
+        pri_sizes = st.multiselect("👉 选择急需先裁的尺码：", options=[s for s in sizes_list if orders.get(s, 0) > 0])
+        if pri_sizes:
+            # 在半栏里，每行放3个输入框刚好
+            cols_pri = st.columns(min(len(pri_sizes), 3) if len(pri_sizes) > 0 else 1)
+            for i, size in enumerate(pri_sizes):
+                with cols_pri[i % 3]:
+                    max_v = orders.get(size, 0)
+                    p_val = st.number_input(f"【 {size} 】件数", min_value=0, max_value=max_v, value=min(max_v, 50), step=10, key=f"pri_{size}")
+                    if p_val > 0:
+                        priority_orders[size] = p_val
+
+with col_step4:
+    st.subheader("✂️ 步骤 4：面料清尾建议")
+    enable_tail = st.checkbox("🔥 启用「原版加层清尾」提示 (借版多拉几层)")
+    tail_sizes = []
+    
+    if enable_tail:
+        st.info("💡 提示：车间为尾料重新画版太浪费！系统会自动挑出最合适的一版大货画样放在最底下。")
+        tail_sizes = st.multiselect("👉 选择期望用尾料多出件的尺码：", options=sizes_list)
 
 st.write("---")
 
@@ -578,14 +684,12 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
     else:
         with st.spinner("电脑正在疯狂计算全局最优组合，请稍候..."):
             
-            # 🌟 修复：永远只算一次完整的全局最优，绝不牺牲面料去排1层碎版
             valid_sizes, markers = find_best_plan(
-                orders, sizes_list, min_layers, max_layers, max_overage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small
+                orders, sizes_list, min_layers, max_layers, max_overage_pct, max_shortage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small, allow_shortage
             )
             
-            if markers:
+            if markers is not None:
                 if enable_priority and priority_orders:
-                    # 🌟 智能分拣算法：像“洗牌”一样把包含急需件数的厚层大版抽调到最前面
                     priority_markers = []
                     normal_markers = markers.copy()
                     current_yield = {s: 0 for s in priority_orders}
@@ -630,18 +734,45 @@ if st.button("🚀 开始计算排料方案", type="primary", use_container_widt
                 else:
                     for m in markers:
                         m['is_priority'] = False
+                        
+                if enable_tail and tail_sizes:
+                    best_idx = -1
+                    best_score = -1
+                    best_sum = float('inf')
+                    
+                    for idx, m in enumerate(markers):
+                        target_count = sum(m['ratios'].get(s, 0) for s in tail_sizes)
+                        if target_count == 0: continue
+                        
+                        score = target_count / m['sum']
+                        if score > best_score or (score == best_score and m['sum'] < best_sum):
+                            best_score = score
+                            best_idx = idx
+                            best_sum = m['sum']
+                    
+                    if best_idx != -1:
+                        tail_marker = {
+                            'layers': 0, 
+                            'ratios': markers[best_idx]['ratios'].copy(),
+                            'sum': markers[best_idx]['sum'],
+                            'is_tail': True,
+                            'source_idx': best_idx + 1 
+                        }
+                        markers.append(tail_marker)
+                    else:
+                        st.warning("⚠️ 提示：在当前算出的所有画样中，没有任何一版包含您指定的清尾尺码。请尝试更换清尾尺码。")
             
         if markers:
             total_produced = 0
             for m in markers:
-                total_produced += m['sum'] * m['layers']
+                total_produced += m['sum'] * m['layers'] 
                 
-            st.success(f"✅ 成功找到完美方案！共使用了 **{len(markers)}** 个版。 订单需求 **{total_order_qty}** 件，实际排版产出 **{total_produced}** 件。")
+            st.success(f"✅ 成功找到完美方案！共使用了 **{len([m for m in markers if not m.get('is_tail')])}** 个大货版。 订单需求 **{total_order_qty}** 件，实际排版产出 **{total_produced}** 件。")
             
             title_text = f"📊 阶梯式扣减排料单"
             st.subheader(title_text)
             
-            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process, display_overage_pct, allow_large_to_small)
+            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process, display_overage_pct, display_shortage_pct, allow_large_to_small)
             components.html(html_content, height=850, scrolling=True)
             
         else:
