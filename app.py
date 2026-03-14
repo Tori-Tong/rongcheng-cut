@@ -152,8 +152,8 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     
     display_special = special_process.strip() if special_process.strip() else "常规"
     if allow_large_to_small:
-        if display_special == "常规": display_special = "大改小抵扣"
-        else: display_special += " (大改小抵扣)"
+        if display_special == "常规": display_special = "大改小"
+        else: display_special += " (大改小)"
     header_parts.append(f'✨ 工艺：<span style="color:#e65c00;">{display_special}</span>')
 
     header_content = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join(header_parts)
@@ -505,7 +505,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
 st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
 
 # 🌟 彻底修复帮助指南：顶格写 Markdown，绝不触发代码块；增加安全空格保证加粗生效！
-with st.sidebar.expander("📖 蓉成服饰排料系统 · 帮助指南", expanded=False):
+with st.sidebar.expander("📖 排料系统 · 帮助指南", expanded=False):
     st.markdown("""
 **1️⃣ 核心排料逻辑：为什么是“大码套小码”？**
 为了追求极致的面料利用率，系统在计算排版时，默认采用了 **“大码套小码 (首尾穿插套排)”** 的智能逻辑。系统会优先抓取一个最大码配一个最小码，将它们穿插组合。这样大片与小片互补，不仅能让排料图极其紧凑，还能保证每拉一床布，产出的尺码分布更加均匀。
@@ -564,7 +564,7 @@ allow_large_to_small = st.sidebar.checkbox(
 )
 
 allow_shortage = st.sidebar.checkbox(
-    "✂️ 面料不足模式 (优先向下取数)", 
+    "✂️ 面料不足模式 (向下取数)", 
     value=False, 
     help="来料不够时勾选此项。系统会在您设定的“允许短装率”范围内，尽可能少排件数以节省面料。但系统死守底线，绝不断码！"
 )
@@ -598,7 +598,7 @@ with col_cut:
 with col_layout:
     layout_dir = st.selectbox("↕️ 排列方式：", options=["任意", "同码同向", "件份同向", "同一方向"], index=1)
 with col_special:
-    special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
+    special_process = st.text_input("✨ 工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
 
 size_input = st.text_input(
     "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
@@ -630,7 +630,7 @@ st.write("---")
 col_step3, col_step4 = st.columns(2)
 
 with col_step3:
-    st.subheader("⏱️ 步骤 3：优先急单设置")
+    st.subheader("⏱️ 步骤 3：优先急单")
     enable_priority = st.checkbox("✨ 启用优先急单 (将包含急需尺码的版置顶)")
     priority_orders = {}
     
@@ -647,7 +647,7 @@ with col_step3:
                         priority_orders[size] = p_val
 
 with col_step4:
-    st.subheader("✂️ 步骤 4：面料清尾建议")
+    st.subheader("✂️ 步骤 4：面料清尾")
     enable_tail = st.checkbox("🔥 启用「原版加层清尾」提示 (借版多拉几层)")
     tail_sizes = []
     
