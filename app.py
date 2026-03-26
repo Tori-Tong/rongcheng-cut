@@ -633,7 +633,7 @@ for i, tab in enumerate(tabs):
         st.markdown("##### 🧠 高级智能规则")
         c8, c9 = st.columns(2)
         with c8:
-            c_l2s = st.checkbox(f"✨ 允许「大改小」平账", value=True if i==0 else False, key=f"c_l2s_{i}")
+            c_l2s = st.checkbox(f"✨ 允许「大改小」平账", value=False, key=f"c_l2s_{i}")
         with c9:
             c_sh = st.checkbox(f"✂️ 启用「面料不足模式」(优先少裁)", value=False, key=f"c_sh_mode_{i}")
             
