@@ -504,7 +504,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
 # ================= 网页 UI 设计 =================
 st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
 
-with st.sidebar.expander("📖 蓉成服饰排料系统 · 帮助指南", expanded=False):
+with st.sidebar.expander("📖 排料系统 · 帮助指南", expanded=False):
     st.markdown("""
 **1️⃣ 核心排料逻辑：为什么是“大码套小码”？**
 为了追求极致的面料利用率，系统在计算排版时，默认采用了 **“大码套小码 (首尾穿插套排)”** 的智能逻辑。系统会优先抓取一个最大码配一个最小码，将它们穿插组合。这样大片与小片互补，不仅能让排料图极其紧凑，还能保证每拉一床布，产出的尺码分布更加均匀。
@@ -554,7 +554,7 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
     2. 超出溢装比例的货品**系统不予结算**，全部费用乙方承担。
     """)
 
-st.title("✂️ 蓉成服饰智能排料系统 (多面料专属版)")
+st.title("✂️ 蓉成服饰智能排料系统")
 st.markdown("一次录入全局订单需求，分别为不同的裁片独立计算、独立排版。")
 
 st.subheader("📝 步骤 1：全局款式与尺码信息")
