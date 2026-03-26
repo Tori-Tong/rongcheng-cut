@@ -557,7 +557,7 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
 st.title("✂️ 蓉成服饰智能排料系统")
 st.markdown("一次录入全局订单需求，分别为不同的裁片独立计算、独立排版。")
 
-st.subheader("📝 步骤 1：全局款式与尺码信息")
+st.subheader("📝 步骤 1：全局款式信息")
 
 col_style, col_color, col_layout, col_special = st.columns(4)
 with col_style:
@@ -569,32 +569,39 @@ with col_layout:
 with col_special:
     special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
 
-size_input = st.text_input(
-    "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
-    value="90 100 110 120 130 140"
-)
-
-raw_sizes = re.split(r'[,，\s、\-]+', size_input.strip())
-sizes_list = []
-for s in raw_sizes:
-    if s and s not in sizes_list:
-        sizes_list.append(s)
-
-st.subheader("📦 步骤 2：录入各尺码订单件数")
+st.subheader("📦 步骤 2：录入尺码与订单件数")
 orders = {}
+sizes_list = []
+
+# 🌟 采用非对称左右分栏并排显示：尺码占较小宽度，件数（有加减法）占较大宽度
+col_size, col_qty = st.columns([1, 1.5])
+
+with col_size:
+    size_input = st.text_input(
+        "👉 1. 请输入所有尺码名称（用空格隔开）：", 
+        value="90 100 110 120 130 140"
+    )
+    raw_sizes = re.split(r'[,，\s、\-]+', size_input.strip())
+    for s in raw_sizes:
+        if s and s not in sizes_list:
+            sizes_list.append(s)
+
+with col_qty:
+    if sizes_list:
+        # 生成默认的 0 列表
+        default_qtys = " ".join(["0"] * len(sizes_list))
+        qty_input = st.text_input(
+            "👉 2. 请按顺序输入对应件数（用空格隔开，算式内勿加空格，如：100+20 200 300-10）：", 
+            value=default_qtys
+        )
+        # 切割输入的件数
+        raw_qtys = re.split(r'[,，\s、]+', qty_input.strip())
+    else:
+        qty_input = ""
+        raw_qtys = []
+        st.warning("请在左侧输入至少一个尺码！")
 
 if sizes_list:
-    # 生成默认的 0 列表
-    default_qtys = " ".join(["0"] * len(sizes_list))
-    
-    qty_input = st.text_input(
-        "👉 请按顺序输入对应尺码的件数（用空格隔开，算式内勿加空格，例如：100+20 200 300-10）：", 
-        value=default_qtys
-    )
-    
-    # 切割输入的件数
-    raw_qtys = re.split(r'[,，\s、]+', qty_input.strip())
-    
     # 定义安全的数学运算解析器（支持加减乘除）
     def safe_eval(expr):
         try:
@@ -612,7 +619,7 @@ if sizes_list:
             if val > 0:
                 orders[size] = val
                 
-    # 🌟 史诗级放大版：解析预览展示
+    # 🌟 史诗级放大版：解析预览展示 (横跨全宽展示，不受分栏限制)
     mapping_str = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join([f"<span style='font-size:18px; color:#333;'>{s}码: <b style='color:#cc0000; font-size:24px;'>{orders.get(s, 0)}</b></span>" for s in sizes_list])
     
     st.markdown(f"""
@@ -621,9 +628,6 @@ if sizes_list:
         <div style='line-height: 2.0;'>{mapping_str}</div>
     </div>
     """, unsafe_allow_html=True)
-    
-else:
-    st.warning("请在上方输入至少一个尺码！")
 
 # 全局订单总需求提示
 total_order_qty = sum(orders.values())
@@ -631,7 +635,6 @@ if total_order_qty > 0:
     st.info(f"💡 当前全局订单总需求为： **{total_order_qty}** 件")
 else:
     st.info("💡 当前全局订单总需求为： **0** 件")
-
 if enable_priority:
     st.sidebar.info("💡 提示：系统会将包含你急需尺码的大货版直接置顶。")
     pri_sizes = st.sidebar.multiselect("👉 选择急需先裁的尺码：", options=[s for s in sizes_list if orders.get(s, 0) > 0])
