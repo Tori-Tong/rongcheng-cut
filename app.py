@@ -55,13 +55,13 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
                 
                 max_r1 = (max_prod_allowed // L1) + 1 if L1 > 0 else 0
                 for r1 in range(max_r1 + 1):
-                    if max_ratio_sum > 0 and r1 > max_ratio_sum:
+                    if r1 > max_ratio_sum:
                         continue
                         
                     rem = net_target - r1 * L1
                     r2 = 0 if rem <= 0 else math.ceil(rem / L2)
                     
-                    if max_ratio_sum > 0 and r2 > max_ratio_sum:
+                    if r2 > max_ratio_sum:
                         continue
                         
                     produced = r1 * L1 + r2 * L2
@@ -105,7 +105,7 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
                             valid_sizes = []
                             for s in active_sizes:
                                 if rem_counts[s] > 0:
-                                    is_sum_ok = (max_ratio_sum == 0) or (current_bin['sum'] + 1 <= max_ratio_sum)
+                                    is_sum_ok = (current_bin['sum'] + 1 <= max_ratio_sum)
                                     if is_sum_ok:
                                         if s in current_bin['ratios'] or len(current_bin['ratios']) < max_sizes_per_marker:
                                             valid_sizes.append(s)
@@ -136,7 +136,7 @@ def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pc
 
     return sizes, best_markers
 
-def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process="", overage_pct=0, shortage_pct=0, allow_large_to_small=False):
+def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process="", overage_pct=0, shortage_pct=0, allow_large_to_small=False, idx_str=""):
     date_str = datetime.now().strftime("%Y年%m月%d日")
     
     sizes_js = [str(s) for s in sizes]
@@ -152,8 +152,8 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     
     display_special = special_process.strip() if special_process.strip() else "常规"
     if allow_large_to_small:
-        if display_special == "常规": display_special = "大改小"
-        else: display_special += " (大改小)"
+        if display_special == "常规": display_special = "大改小抵扣"
+        else: display_special += " (大改小抵扣)"
     header_parts.append(f'✨ 工艺：<span style="color:#e65c00;">{display_special}</span>')
 
     header_content = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join(header_parts)
@@ -300,11 +300,12 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     table_html += '</table>'
 
     display_style_overage = "block" if has_global_overage else "none"
-    table_html += f'<div id="overage-warning" style="display: {display_style_overage}; color: #cc0000; font-weight: bold; margin-top: 15px; padding: 10px; background-color: #ffe6e6; border: 1px solid #ffcccc; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深红色）的增裁件数已超出设定的 {overage_pct}% 溢装率上限！</div>'
+    table_html += f'<div id="overage-warning-{idx_str}" style="display: {display_style_overage}; color: #cc0000; font-weight: bold; margin-top: 15px; padding: 10px; background-color: #ffe6e6; border: 1px solid #ffcccc; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深红色）的增裁件数已超出设定的 {overage_pct}% 溢装率上限！</div>'
     
     display_style_shortage = "block" if has_global_shortage else "none"
-    table_html += f'<div id="shortage-warning" style="display: {display_style_shortage}; color: #003399; font-weight: bold; margin-top: 10px; padding: 10px; background-color: #e6f0ff; border: 1px solid #b3d1ff; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深蓝色）的少裁件数已超出设定的 {shortage_pct}% 短装率下限！</div>'
+    table_html += f'<div id="shortage-warning-{idx_str}" style="display: {display_style_shortage}; color: #003399; font-weight: bold; margin-top: 10px; padding: 10px; background-color: #e6f0ff; border: 1px solid #b3d1ff; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深蓝色）的少裁件数已超出设定的 {shortage_pct}% 短装率下限！</div>'
 
+    # 🌟 修复：完整拼接全部文件名信息
     filename_parts = []
     if style_no.strip(): filename_parts.append(style_no.strip())
     else: filename_parts.append("大货排料单")
@@ -475,10 +476,10 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                     finalCell.innerHTML = cellHtml;
                 }});
 
-                let warningBoxOv = document.getElementById('overage-warning');
+                let warningBoxOv = document.getElementById('overage-warning-{idx_str}');
                 if (warningBoxOv) warningBoxOv.style.display = hasGlobalOverage ? 'block' : 'none';
                 
-                let warningBoxSh = document.getElementById('shortage-warning');
+                let warningBoxSh = document.getElementById('shortage-warning-{idx_str}');
                 if (warningBoxSh) warningBoxSh.style.display = hasGlobalShortage ? 'block' : 'none';
             }}
 
@@ -504,8 +505,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
 # ================= 网页 UI 设计 =================
 st.set_page_config(page_title="蓉成服饰排料系统", layout="wide")
 
-# 🌟 彻底修复帮助指南：顶格写 Markdown，绝不触发代码块；增加安全空格保证加粗生效！
-with st.sidebar.expander("📖 排料系统 · 帮助指南", expanded=False):
+with st.sidebar.expander("📖 蓉成服饰排料系统 · 帮助指南", expanded=False):
     st.markdown("""
 **1️⃣ 核心排料逻辑：为什么是“大码套小码”？**
 为了追求极致的面料利用率，系统在计算排版时，默认采用了 **“大码套小码 (首尾穿插套排)”** 的智能逻辑。系统会优先抓取一个最大码配一个最小码，将它们穿插组合。这样大片与小片互补，不仅能让排料图极其紧凑，还能保证每拉一床布，产出的尺码分布更加均匀。
@@ -513,14 +513,14 @@ with st.sidebar.expander("📖 排料系统 · 帮助指南", expanded=False):
 **2️⃣ 灵活控层：如何控制拉布层数与画样长度？**
 * **面料太厚？** 当【最高层数】被限制得很低（如30层）时，系统会自动 **增加单版配比和** （把版画长一点）来凑够件数。
 * **裁床太短？** 你可以设置【配比和上限】（如限制一版最多画7件）。此时系统会自动 **增加拉布层数** 。
-* 💡 **秘诀**：若不受限，建议将【配比和上限】保留为“0（不限制）”。手动微调表格时，直接双击蓝色的“层数”或红色的“配比”，底部结余会自动重算。
+* 💡 **秘诀**：手动微调表格时，直接双击蓝色的“层数”或红色的“配比”，底部结余会自动重算。
 
 **3️⃣ “大改小”功能：借件抵扣的妙用与禁忌**
 开启「大改小」后，大码多裁的废布会被直接利用填补小码的缺口，底部会生成蓝字 `↘改XX码`。
 * ⚠️ **核心警告（极度重要）** ：“大改小”功能 **仅适用于常规可自由改刀的对称裁片** ！如果当前款式属于：**1.不对称花型 / 2.条格面料（对条对格） / 3.极度不规则裁片**，请 **务必关闭** 此功能！
 
 **4️⃣ 优先急单：既要赶进度，又要省面料**
-如果车间急需某些尺码先上线，请勾选【步骤3：优先急单】。系统 **不会** 为了急单去单独拉1层、2层布，而是会在全局最优的厚层大版中，直接把 **刚好包含你急需尺码的大货版** 抽调并置顶，带有 `⚡优先` 标记的版请优先安排拉布！
+如果车间急需某些尺码先上线，请勾选侧边栏的【优先急单】。系统 **不会** 为了急单去单独拉1层、2层布，而是会在全局最优的厚层大版中，直接把 **刚好包含你急需尺码的大货版** 抽调并置顶，带有 `⚡优先` 标记的版请优先安排拉布！
 
 **5️⃣ 面料不足模式（允许短装）：来料不够怎么排？**
 当遇到面料来料不足，或瑕疵太多导致无法凑齐完整订单时，请使用此功能。
@@ -529,47 +529,17 @@ with st.sidebar.expander("📖 排料系统 · 帮助指南", expanded=False):
 * **终极省布组合**：如果同时开启【大改小】和【面料不足】，系统会利用大码余量补小码，结合整体缩减，把有限的面料抠出最大价值！
 
 **6️⃣ 面料清尾建议：布多了怎么顺手用掉？**
-实际车间里，为了一点尾料重新画版极其浪费。勾选【步骤4】，选择你想多要的尺码，系统会自动从算好的大货版中，挑出 **最合适的一版原版画样** 复制到表格最下方。师傅无需新画麦架，直接用原版多拉几层即可！表格默认加层数为 `0` ，双击输入师傅实际拉的层数，底部结余和“大改小”会自动完美联动平账！
+实际车间里，为了一点尾料重新画版极其浪费。勾选该面料参数里的【面料清尾】，选择你想多要的尺码，系统会自动从算好的大货版中，挑出 **最合适的一版原版画样** 复制到表格最下方。师傅无需新画麦架，直接用原版多拉几层即可！
 """)
-
-st.title("✂️ 蓉成服饰智能排料系统")
-st.markdown("输入大货订单需求与裁床限制，一键生成最优阶梯拉布方案。")
-
-# 侧边栏：参数设置
-st.sidebar.header("⚙️ 裁床限制参数")
-
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    min_layers = st.number_input("最低层数", min_value=1, value=1)
-with col2:
-    max_layers = st.number_input("最高层数", min_value=0, value=0) 
-
-col_pct1, col_pct2 = st.sidebar.columns(2)
-with col_pct1:
-    display_overage_pct = st.number_input("溢装率 (%)", min_value=0, value=5, step=1)
-    max_overage_pct = display_overage_pct / 100.0 
-with col_pct2:
-    display_shortage_pct = st.number_input("短装率 (%)", min_value=0, value=0, step=1)
-    max_shortage_pct = display_shortage_pct / 100.0 
-
-max_ratio_sum = st.sidebar.number_input("配比和上限 (0代表不限制)", min_value=0, value=0)
-max_markers = st.sidebar.number_input("总版数上限", min_value=0, value=0)
-max_sizes_per_marker = st.sidebar.number_input("单版最多尺码数", min_value=0, value=0)
+    
+st.sidebar.markdown("---")
+num_cuts = st.sidebar.number_input("⚙️ 需要计算的面料/裁片种类数：", min_value=1, max_value=5, value=1, step=1, help="例如大身、袖子两种面料需分别控层，这里选 2。")
 
 st.sidebar.markdown("---")
-allow_large_to_small = st.sidebar.checkbox(
-    "✨ 开启「大改小」允许", 
-    value=False, 
-    help="勾选后，排版时右侧大尺码多余的件数会自动向左填补小尺码的缺口。注意：仅适用于可自由裁减的常规裁片！"
-)
+st.sidebar.subheader("⏱️ 优先急单设置 (选填)")
+enable_priority = st.sidebar.checkbox("✨ 启用优先急单 (置顶急需尺码)")
+priority_orders = {}
 
-allow_shortage = st.sidebar.checkbox(
-    "✂️ 面料不足模式 (向下取数)", 
-    value=False, 
-    help="来料不够时勾选此项。系统会在您设定的“允许短装率”范围内，尽可能少排件数以节省面料。但系统死守底线，绝不断码！"
-)
-
-st.sidebar.markdown("---")
 with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True):
     st.markdown("""
     **(按订单总件数划分)**
@@ -585,20 +555,20 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
     2. 超出溢装比例的货品**系统不予结算**，全部费用乙方承担。
     """)
 
-# 主页面：订单输入
-st.subheader("📝 步骤 1：生产工艺与尺码信息")
+st.title("✂️ 蓉成服饰智能排料系统 (多面料专属版)")
+st.markdown("一次录入全局订单需求，分别为不同的裁片独立计算、独立排版。")
 
-col_style, col_color, col_cut, col_layout, col_special = st.columns(5)
+st.subheader("📝 步骤 1：全局款式与尺码信息")
+
+col_style, col_color, col_layout, col_special = st.columns(4)
 with col_style:
     style_no = st.text_input("👗 款号 (选填)：", placeholder="RC-001")
 with col_color:
     color = st.text_input("🎨 颜色 (选填)：", placeholder="藏青色")
-with col_cut:
-    cut_type = st.text_input("✂️ 裁片 (选填)：", placeholder="大身")
 with col_layout:
     layout_dir = st.selectbox("↕️ 排列方式：", options=["任意", "同码同向", "件份同向", "同一方向"], index=1)
 with col_special:
-    special_process = st.text_input("✨ 工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
+    special_process = st.text_input("✨ 特殊工艺 (选填)：", placeholder="如: 加衬/对条/手拉")
 
 size_input = st.text_input(
     "👉 请输入这批货的所有尺码名称（用空格隔开）：", 
@@ -611,7 +581,7 @@ for s in raw_sizes:
     if s and s not in sizes_list:
         sizes_list.append(s)
 
-st.subheader("📦 步骤 2：输入各尺码订单件数")
+st.subheader("📦 步骤 2：录入各尺码订单件数")
 orders = {}
 
 if sizes_list:
@@ -624,151 +594,169 @@ if sizes_list:
 else:
     st.warning("请在上方输入至少一个尺码！")
 
-st.write("---")
-
-# 🌟 并列显示步骤 3 和步骤 4
-col_step3, col_step4 = st.columns(2)
-
-with col_step3:
-    st.subheader("⏱️ 步骤 3：优先急单")
-    enable_priority = st.checkbox("✨ 启用优先急单 (将包含急需尺码的版置顶)")
-    priority_orders = {}
-    
-    if enable_priority:
-        st.info("💡 提示：系统不会产生碎版，而是会将包含你急需尺码的大货排版直接提前！")
-        pri_sizes = st.multiselect("👉 选择急需先裁的尺码：", options=[s for s in sizes_list if orders.get(s, 0) > 0])
-        if pri_sizes:
-            cols_pri = st.columns(min(len(pri_sizes), 3) if len(pri_sizes) > 0 else 1)
-            for i, size in enumerate(pri_sizes):
-                with cols_pri[i % 3]:
-                    max_v = orders.get(size, 0)
-                    p_val = st.number_input(f"【 {size} 】件数", min_value=0, max_value=max_v, value=min(max_v, 50), step=10, key=f"pri_{size}")
-                    if p_val > 0:
-                        priority_orders[size] = p_val
-
-with col_step4:
-    st.subheader("✂️ 步骤 4：面料清尾")
-    enable_tail = st.checkbox("🔥 启用「原版加层清尾」提示 (借版多拉几层)")
-    tail_sizes = []
-    
-    if enable_tail:
-        st.info("💡 提示：车间为尾料重新画版太浪费！系统会自动挑出最合适的一版大货画样放在最底下。")
-        tail_sizes = st.multiselect("👉 选择期望用尾料多出件的尺码：", options=sizes_list)
+if enable_priority:
+    st.sidebar.info("💡 提示：系统会将包含你急需尺码的大货版直接置顶。")
+    pri_sizes = st.sidebar.multiselect("👉 选择急需先裁的尺码：", options=[s for s in sizes_list if orders.get(s, 0) > 0])
+    if pri_sizes:
+        for size in pri_sizes:
+            max_v = orders.get(size, 0)
+            p_val = st.sidebar.number_input(f"【 {size} 】件数", min_value=0, max_value=max_v, value=min(max_v, 50), step=10, key=f"pri_{size}")
+            if p_val > 0:
+                priority_orders[size] = p_val
 
 st.write("---")
 
-total_order_qty = sum(orders.values())
-if total_order_qty > 0:
-    st.info(f"💡 当前已录入的订单总需求为： **{total_order_qty}** 件")
-else:
-    st.info("💡 当前已录入的订单总需求为： **0** 件")
+st.subheader(f"✂️ 步骤 3：各面料独立排版与计算 (共 {int(num_cuts)} 种)")
+st.info("💡 提示：在此处分别为不同面料设定厚度限制，并**独立点击计算按钮**，各版计算结果互不干扰！")
 
-# 计算按钮与结果展示
-if st.button("🚀 开始计算排料方案", type="primary", use_container_width=True):
-    if not orders:
-        st.error("❌ 请至少填写一个尺码的件数！")
-    elif max_layers <= 0:
-        st.error("❌ 左侧的【最高允许层数】不能为 0，请先设置！")
-    elif min_layers > max_layers:
-        st.error("❌ 【最低允许层数】不能大于【最高允许层数】，请检查输入！")
-    elif max_markers <= 0:
-        st.error("❌ 左侧的【总版数上限】不能为 0，请先设置！")
-    elif max_sizes_per_marker <= 0:
-        st.error("❌ 左侧的【单版最多尺码数】不能为 0，请先设置！")
-    else:
-        with st.spinner("电脑正在疯狂计算全局最优组合，请稍候..."):
+tabs = st.tabs([f"裁片 {i+1}" for i in range(int(num_cuts))])
+
+for i, tab in enumerate(tabs):
+    with tab:
+        # 🌟 修复：默认值不再含有空格
+        default_cut_name = f"裁片{i+1}"
+        cut_name = st.text_input(f"🏷️ 此面料/裁片名称：", value=default_cut_name, key=f"c_name_{i}")
+        
+        st.markdown("##### ⚙️ 基础限高参数")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: c_min_layers = st.number_input("最低层数", min_value=1, value=1, key=f"c_minL_{i}")
+        with c2: c_max_layers = st.number_input("最高层数", min_value=0, value=0, key=f"c_maxL_{i}") 
+        with c3: c_ov_pct = st.number_input("溢装率 (%)", min_value=0, value=5, key=f"c_ov_{i}")
+        with c4: c_sh_pct = st.number_input("允许短装率 (%)", min_value=0, value=0, key=f"c_sh_{i}")
+        
+        st.markdown("##### 📏 画样版长限制")
+        c5, c6, c7 = st.columns(3)
+        with c5: c_rs = st.number_input("配比和上限", min_value=0, value=0, key=f"c_rs_{i}")
+        with c6: c_mm = st.number_input("总版数上限", min_value=0, value=0, key=f"c_mm_{i}")
+        with c7: c_spm = st.number_input("单版最多尺码数", min_value=0, value=0, key=f"c_spm_{i}")
+        
+        st.markdown("##### 🧠 高级智能规则")
+        c8, c9 = st.columns(2)
+        with c8:
+            c_l2s = st.checkbox(f"✨ 允许「大改小」平账", value=True if i==0 else False, key=f"c_l2s_{i}")
+        with c9:
+            c_sh = st.checkbox(f"✂️ 启用「面料不足模式」(优先少裁)", value=False, key=f"c_sh_mode_{i}")
             
-            valid_sizes, markers = find_best_plan(
-                orders, sizes_list, min_layers, max_layers, max_overage_pct, max_shortage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small, allow_shortage
-            )
+        st.markdown("##### 🔥 此面料清尾计划")
+        c_tail = st.checkbox(f"生成「原版加层清尾」提示", value=False, key=f"c_tail_{i}")
+        c_tail_sizes = []
+        if c_tail:
+            c_tail_sizes = st.multiselect("👉 选择需清尾出件的尺码：", options=sizes_list, key=f"c_ts_{i}")
             
-            if markers is not None:
-                if enable_priority and priority_orders:
-                    priority_markers = []
-                    normal_markers = markers.copy()
-                    current_yield = {s: 0 for s in priority_orders}
+        st.write("")
+        
+        if st.button(f"🚀 单独计算【{cut_name}】排版", type="primary", use_container_width=True, key=f"btn_{i}"):
+            if not orders:
+                st.session_state[f'res_err_{i}'] = "❌ 请至少在【步骤2】填写一个尺码的订单需求！"
+                st.session_state[f'res_html_{i}'] = None
+            elif c_max_layers <= 0:
+                st.session_state[f'res_err_{i}'] = f"❌ 【{cut_name}】的【最高允许层数】当前为 0，请手动设置一个有效的限制高度！"
+                st.session_state[f'res_html_{i}'] = None
+            elif c_rs <= 0 or c_mm <= 0 or c_spm <= 0:
+                st.session_state[f'res_err_{i}'] = f"❌ 【{cut_name}】的【画样版长限制】（配比和、总版数、单版尺码数）当前为 0，请手动设置实际参数！"
+                st.session_state[f'res_html_{i}'] = None
+            else:
+                with st.spinner(f"电脑正在为您计算【{cut_name}】的最佳排版，请稍候..."):
+                    valid_sizes, markers = find_best_plan(
+                        orders, sizes_list, c_min_layers, c_max_layers, 
+                        c_ov_pct/100.0, c_sh_pct/100.0, 
+                        c_rs, c_mm, c_spm, 
+                        c_l2s, c_sh
+                    )
                     
-                    while normal_markers:
-                        all_met = True
-                        for s, target in priority_orders.items():
-                            if current_yield[s] < target:
-                                all_met = False
-                                break
-                        if all_met:
-                            break
+                    if markers is not None:
+                        if enable_priority and priority_orders:
+                            priority_markers = []
+                            normal_markers = markers.copy()
+                            current_yield = {s: 0 for s in priority_orders}
                             
-                        best_idx = -1
-                        best_score = -1
-                        
-                        for idx, m in enumerate(normal_markers):
-                            score = 0
-                            for s, target in priority_orders.items():
-                                needed = max(0, target - current_yield[s])
-                                provided = m['ratios'].get(s, 0) * m['layers']
-                                score += min(needed, provided)
+                            while normal_markers:
+                                all_met = True
+                                for s, target in priority_orders.items():
+                                    if current_yield[s] < target:
+                                        all_met = False
+                                        break
+                                if all_met:
+                                    break
+                                    
+                                best_idx = -1
+                                best_score = -1
                                 
-                            if score > best_score:
-                                best_score = score
-                                best_idx = idx
+                                for idx_m, m in enumerate(normal_markers):
+                                    score = 0
+                                    for s, target in priority_orders.items():
+                                        needed = max(0, target - current_yield[s])
+                                        provided = m['ratios'].get(s, 0) * m['layers']
+                                        score += min(needed, provided)
+                                        
+                                    if score > best_score:
+                                        best_score = score
+                                        best_idx = idx_m
+                                        
+                                if best_score == 0:
+                                    break 
+                                    
+                                chosen = normal_markers.pop(best_idx)
+                                chosen['is_priority'] = True
+                                priority_markers.append(chosen)
                                 
-                        if best_score == 0:
-                            break 
+                                for s in priority_orders:
+                                    current_yield[s] += chosen['ratios'].get(s, 0) * chosen['layers']
+                                    
+                            for m in normal_markers:
+                                m['is_priority'] = False
+                                
+                            markers = priority_markers + normal_markers
+                        else:
+                            for m in markers:
+                                m['is_priority'] = False
+                                
+                        if c_tail and c_tail_sizes:
+                            best_idx = -1
+                            best_score = -1
+                            best_sum = float('inf')
                             
-                        chosen = normal_markers.pop(best_idx)
-                        chosen['is_priority'] = True
-                        priority_markers.append(chosen)
-                        
-                        for s in priority_orders:
-                            current_yield[s] += chosen['ratios'].get(s, 0) * chosen['layers']
+                            for idx_m, m in enumerate(markers):
+                                target_count = sum(m['ratios'].get(s, 0) for s in c_tail_sizes)
+                                if target_count == 0: continue
+                                
+                                score = target_count / m['sum']
+                                if score > best_score or (score == best_score and m['sum'] < best_sum):
+                                    best_score = score
+                                    best_idx = idx_m
+                                    best_sum = m['sum']
                             
-                    for m in normal_markers:
-                        m['is_priority'] = False
+                            if best_idx != -1:
+                                tail_marker = {
+                                    'layers': 0, 
+                                    'ratios': markers[best_idx]['ratios'].copy(),
+                                    'sum': markers[best_idx]['sum'],
+                                    'is_tail': True,
+                                    'source_idx': best_idx + 1 
+                                }
+                                markers.append(tail_marker)
+                            else:
+                                st.warning(f"⚠️ {cut_name} 提示：算出的画样中没有包含您指定的清尾尺码。")
+                                
+                    if markers:
+                        total_produced = sum(m['sum'] * m['layers'] for m in markers if not m.get('is_tail', False))
+                        msg = f"✅ 【{cut_name}】排版完毕！共使用了 **{len([m for m in markers if not m.get('is_tail')])}** 个大货版。 产出 **{total_produced}** 件。"
                         
-                    markers = priority_markers + normal_markers
-                else:
-                    for m in markers:
-                        m['is_priority'] = False
-                        
-                if enable_tail and tail_sizes:
-                    best_idx = -1
-                    best_score = -1
-                    best_sum = float('inf')
-                    
-                    for idx, m in enumerate(markers):
-                        target_count = sum(m['ratios'].get(s, 0) for s in tail_sizes)
-                        if target_count == 0: continue
-                        
-                        score = target_count / m['sum']
-                        if score > best_score or (score == best_score and m['sum'] < best_sum):
-                            best_score = score
-                            best_idx = idx
-                            best_sum = m['sum']
-                    
-                    if best_idx != -1:
-                        tail_marker = {
-                            'layers': 0, 
-                            'ratios': markers[best_idx]['ratios'].copy(),
-                            'sum': markers[best_idx]['sum'],
-                            'is_tail': True,
-                            'source_idx': best_idx + 1 
-                        }
-                        markers.append(tail_marker)
+                        html_c = generate_html_table(
+                            valid_sizes, orders, markers, style_no, color, cut_name, layout_dir, special_process, 
+                            c_ov_pct, c_sh_pct, c_l2s, idx_str=str(i)
+                        )
+                        st.session_state[f'res_err_{i}'] = None
+                        st.session_state[f'res_msg_{i}'] = msg
+                        st.session_state[f'res_html_{i}'] = html_c
                     else:
-                        st.warning("⚠️ 提示：在当前算出的所有画样中，没有任何一版包含您指定的清尾尺码。请尝试更换清尾尺码。")
-            
-        if markers:
-            total_produced = 0
-            for m in markers:
-                total_produced += m['sum'] * m['layers'] 
-                
-            st.success(f"✅ 成功找到完美方案！共使用了 **{len([m for m in markers if not m.get('is_tail')])}** 个大货版。 订单需求 **{total_order_qty}** 件，实际排版产出 **{total_produced}** 件。")
-            
-            title_text = f"📊 阶梯式扣减排料单"
-            st.subheader(title_text)
-            
-            html_content = generate_html_table(valid_sizes, orders, markers, style_no, color, cut_type, layout_dir, special_process, display_overage_pct, display_shortage_pct, allow_large_to_small)
-            components.html(html_content, height=850, scrolling=True)
-            
-        else:
-            st.error("❌ 在当前的严苛限制下，未找到不超标的方案。")
-            st.info("💡 建议：尝试在左侧边栏放宽【总版数上限】、【配比和上限】或【单版最多尺码数】后重试。")
+                        st.session_state[f'res_err_{i}'] = f"❌ 【{cut_name}】在当前的严苛限制下，未找到不超标的方案。请尝试放宽对应的限制条件（如总版数上限）。"
+                        st.session_state[f'res_msg_{i}'] = None
+                        st.session_state[f'res_html_{i}'] = None
+
+        if st.session_state.get(f'res_err_{i}'):
+            st.error(st.session_state[f'res_err_{i}'])
+        if st.session_state.get(f'res_msg_{i}'):
+            st.success(st.session_state[f'res_msg_{i}'])
+            st.subheader(f"📊 【{cut_name}】阶梯式扣减排料单")
+            components.html(st.session_state[f'res_html_{i}'], height=850, scrolling=True)
