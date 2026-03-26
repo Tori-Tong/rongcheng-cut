@@ -147,7 +147,7 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     header_parts = []
     if style_no.strip(): header_parts.append(f'🏷️ 款号：<span style="color:#c00;">{style_no.strip()}</span>')
     if color.strip(): header_parts.append(f'🎨 颜色：<span style="color:#0066cc;">{color.strip()}</span>')
-    if cut_type.strip(): header_parts.append(f'✂️ 裁片：{cut_type.strip()}')
+    if cut_type.strip(): header_parts.append(f'✂️ 裁片：{cut_type.strip()}</span>')
     header_parts.append(f'↕️ 排版：<span style="border-bottom: 2px solid #000;">{layout_dir}</span>')
     
     display_special = special_process.strip() if special_process.strip() else "常规"
@@ -305,7 +305,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
     display_style_shortage = "block" if has_global_shortage else "none"
     table_html += f'<div id="shortage-warning-{idx_str}" style="display: {display_style_shortage}; color: #003399; font-weight: bold; margin-top: 10px; padding: 10px; background-color: #e6f0ff; border: 1px solid #b3d1ff; border-radius: 4px; text-align: center;">⚠️ 警告：当前排版方案中，部分尺码（深蓝色）的少裁件数已超出设定的 {shortage_pct}% 短装率下限！</div>'
 
-    # 🌟 修复：完整拼接全部文件名信息
     filename_parts = []
     if style_no.strip(): filename_parts.append(style_no.strip())
     else: filename_parts.append("大货排料单")
@@ -594,6 +593,14 @@ if sizes_list:
 else:
     st.warning("请在上方输入至少一个尺码！")
 
+st.write("---")
+
+total_order_qty = sum(orders.values())
+if total_order_qty > 0:
+    st.info(f"💡 当前全局订单总需求为： **{total_order_qty}** 件")
+else:
+    st.info("💡 当前全局订单总需求为： **0** 件")
+
 if enable_priority:
     st.sidebar.info("💡 提示：系统会将包含你急需尺码的大货版直接置顶。")
     pri_sizes = st.sidebar.multiselect("👉 选择急需先裁的尺码：", options=[s for s in sizes_list if orders.get(s, 0) > 0])
@@ -613,7 +620,6 @@ tabs = st.tabs([f"裁片 {i+1}" for i in range(int(num_cuts))])
 
 for i, tab in enumerate(tabs):
     with tab:
-        # 🌟 修复：默认值不再含有空格
         default_cut_name = f"裁片{i+1}"
         cut_name = st.text_input(f"🏷️ 此面料/裁片名称：", value=default_cut_name, key=f"c_name_{i}")
         
