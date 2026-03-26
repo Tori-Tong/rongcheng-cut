@@ -557,7 +557,7 @@ with st.sidebar.expander("📌 笛莎合同短溢装标准参考", expanded=True
 st.title("✂️ 蓉成服饰智能排料系统")
 st.markdown("一次录入全局订单需求，分别为不同的裁片独立计算、独立排版。")
 
-st.subheader("📝 步骤 1：全局款式信息")
+st.subheader("📝 步骤 1：款式信息")
 
 col_style, col_color, col_layout, col_special = st.columns(4)
 with col_style:
