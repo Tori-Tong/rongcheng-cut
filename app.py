@@ -591,7 +591,7 @@ with col_qty:
         # 生成默认的 0 列表
         default_qtys = " ".join(["0"] * len(sizes_list))
         qty_input = st.text_input(
-            "👉 2. 请按顺序输入对应件数（用空格隔开，算式内勿加空格，如：100+20 200 300-10）：", 
+            "👉 2. 请按顺序输入对应件数（用空格隔开，算式内勿加空格，如：1+2 2 3-1）：", 
             value=default_qtys
         )
         # 切割输入的件数
