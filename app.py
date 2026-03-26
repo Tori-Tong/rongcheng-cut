@@ -584,17 +584,48 @@ st.subheader("📦 步骤 2：录入各尺码订单件数")
 orders = {}
 
 if sizes_list:
-    cols = st.columns(min(len(sizes_list), 6))
+    # 生成默认的 0 列表
+    default_qtys = " ".join(["0"] * len(sizes_list))
+    
+    qty_input = st.text_input(
+        "👉 请按顺序输入对应尺码的件数（用空格隔开，算式内勿加空格，例如：100+20 200 300-10）：", 
+        value=default_qtys
+    )
+    
+    # 切割输入的件数
+    raw_qtys = re.split(r'[,，\s、]+', qty_input.strip())
+    
+    # 定义安全的数学运算解析器（支持加减乘除）
+    def safe_eval(expr):
+        try:
+            # 只允许数字和运算符号，防止恶意代码执行
+            if re.match(r'^[\d\+\-\*\/\(\)]+$', expr):
+                return max(0, int(eval(expr, {"__builtins__": None}, {})))
+            return 0
+        except:
+            return 0
+
+    # 将尺码和计算后的件数一一对应
     for i, size in enumerate(sizes_list):
-        with cols[i % 6]:
-            val = st.number_input(f"【 {size} 】码件数", min_value=0, value=0, step=10, key=f"size_{size}")
+        if i < len(raw_qtys) and raw_qtys[i]:
+            val = safe_eval(raw_qtys[i])
             if val > 0:
                 orders[size] = val
+                
+    # 🌟 史诗级放大版：解析预览展示
+    mapping_str = " &nbsp;&nbsp;|&nbsp;&nbsp; ".join([f"<span style='font-size:18px; color:#333;'>{s}码: <b style='color:#cc0000; font-size:24px;'>{orders.get(s, 0)}</b></span>" for s in sizes_list])
+    
+    st.markdown(f"""
+    <div style='background-color: #f0f8ff; padding: 15px 20px; border-radius: 8px; border: 2px solid #b3d4fc; margin-top: 10px; margin-bottom: 15px;'>
+        <div style='font-size: 16px; color: #0056b3; margin-bottom: 10px;'><b>🔍 解析预览核对：</b></div>
+        <div style='line-height: 2.0;'>{mapping_str}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
 else:
     st.warning("请在上方输入至少一个尺码！")
 
-st.write("---")
-
+# 全局订单总需求提示
 total_order_qty = sum(orders.values())
 if total_order_qty > 0:
     st.info(f"💡 当前全局订单总需求为： **{total_order_qty}** 件")
