@@ -7,134 +7,205 @@ from datetime import datetime
 
 # ================= 核心算法 =================
 def find_best_plan(orders, ordered_sizes, min_layers, max_layers, max_overage_pct, max_shortage_pct, max_ratio_sum, max_markers, max_sizes_per_marker, allow_large_to_small, allow_shortage, global_orders=None):
+    import math
+    from itertools import combinations, product
+    
     if global_orders is None:
         global_orders = orders
         
     sizes = [s for s in ordered_sizes if s in orders and orders[s] > 0]
     
-    best_waste = float('inf')
-    best_plan = None
-    best_markers = None
+    targets = {s: orders[s] for s in sizes}
+    max_allowed = {s: math.floor(global_orders[s] * (1 + max_overage_pct)) for s in sizes}
+    min_required = {s: math.floor(global_orders[s] * (1 - max_shortage_pct)) if allow_shortage else targets[s] for s in sizes}
     
-    if allow_large_to_small:
-        process_sizes = list(reversed(sizes))
-    else:
-        process_sizes = sizes
+    def check_validity(test_rem):
+        if allow_large_to_small:
+            test_rem = test_rem.copy()
+            for i in range(len(sizes) - 1, 0, -1):
+                s_large = sizes[i]
+                if test_rem[s_large] < 0:
+                    excess = abs(test_rem[s_large])
+                    for j in range(i - 1, -1, -1):
+                        s_small = sizes[j]
+                        if test_rem[s_small] > 0:
+                            fill = min(excess, test_rem[s_small])
+                            test_rem[s_small] -= fill
+                            test_rem[s_large] += fill
+                            excess -= fill
+                        if excess == 0:
+                            break
+        for s in sizes:
+            allowed_short = targets[s] - min_required[s]
+            if test_rem[s] > allowed_short:
+                return False
+        return True
+
+    BEAM_WIDTH = 300
+    BRANCHES_PER_STATE = 50
     
-    for L1 in range(min_layers, max_layers + 1):
-        for L2 in range(L1, max_layers + 1):
-            current_waste = 0
-            plan_ratios = {}
-            possible = True
-            inherited_excess = 0 
+    initial_state = {
+        'markers': [],
+        'rem': {s: targets[s] for s in sizes},
+        'produced': {s: 0 for s in sizes}
+    }
+    beam = [initial_state]
+    
+    best_valid_plan = None
+    best_valid_score = -float('inf')
+    
+    for step in range(max_markers):
+        new_beam = []
+        
+        for state in beam:
+            # 1. 验证当前方案是否已完全合法
+            if check_validity(state['rem']):
+                waste = sum(max(0, state['produced'][s] - targets[s]) for s in sizes)
+                thick_bonus = sum((m['layers'] ** 1.5) for m in state['markers'])
+                score = 1000000 - (waste * 50) + thick_bonus
+                if score > best_valid_score:
+                    best_valid_score = score
+                    best_valid_plan = state['markers']
             
-            for size in process_sizes:
-                target = orders[size]
-                max_allowed = math.floor(global_orders[size] * (1 + max_overage_pct))
-                
-                if allow_shortage:
-                    allowed_short = math.floor(target * max_shortage_pct)
-                    base_target = max(1, target - allowed_short) if target > 0 else 0
-                else:
-                    base_target = target
-                
-                if allow_large_to_small:
-                    net_target = max(0, base_target - inherited_excess)
-                    max_prod_allowed = max(0, max_allowed - inherited_excess)
-                    
-                    if net_target == 0 and max_prod_allowed == 0:
-                        plan_ratios[size] = [0, 0]
-                        inherited_excess = max(0, inherited_excess - target)
-                        continue
-                else:
-                    net_target = base_target
-                    max_prod_allowed = max_allowed
-                
-                min_waste_for_size = float('inf')
-                best_r1, best_r2 = -1, -1
-                
-                max_r1 = (max_prod_allowed // L1) + 1 if L1 > 0 else 0
-                for r1 in range(max_r1 + 1):
-                    if r1 > max_ratio_sum:
-                        continue
+            # 2. 🔥 新增：超级兜底清尾器 (Smart Finisher)
+            # 如果剩下的尺码数可以用一个版搞定，直接暴力倒推完美清尾层数
+            active_sizes = [s for s in sizes if state['rem'][s] > 0]
+            if 0 < len(active_sizes) <= max_sizes_per_marker:
+                for L in range(max_layers, min_layers - 1, -1):
+                    f_ratios = {}
+                    f_valid = True
+                    f_sum = 0
+                    for s in active_sizes:
+                        r = math.ceil(state['rem'][s] / L)
+                        if r == 0: r = 1
+                        prod = r * L
+                        if state['produced'][s] + prod > max_allowed[s]:
+                            f_valid = False
+                            break
+                        f_ratios[s] = r
+                        f_sum += r
                         
-                    rem = net_target - r1 * L1
-                    r2 = 0 if rem <= 0 else math.ceil(rem / L2)
-                    
-                    if r2 > max_ratio_sum:
-                        continue
+                    if f_valid and f_sum <= max_ratio_sum:
+                        new_rem = state['rem'].copy()
+                        new_produced = state['produced'].copy()
+                        for s, r in f_ratios.items():
+                            new_rem[s] -= r * L
+                            new_produced[s] += r * L
                         
-                    produced = r1 * L1 + r2 * L2
-                    total_available = produced + (inherited_excess if allow_large_to_small else 0)
-                    
-                    if base_target <= total_available <= max_allowed:
-                        waste = total_available - base_target 
-                        if waste < min_waste_for_size:
-                            min_waste_for_size = waste
-                            best_r1, best_r2 = r1, r2
-                            
-                if best_r1 == -1:
-                    possible = False
-                    break
-                else:
-                    plan_ratios[size] = [best_r1, best_r2]
-                    if allow_large_to_small:
-                        actual_produced = best_r1 * L1 + best_r2 * L2
-                        total_physical = actual_produced + inherited_excess
-                        inherited_excess = max(0, total_physical - target)
-                    else:
-                        current_waste += min_waste_for_size
-                    
-            if possible:
-                if allow_large_to_small:
-                    current_waste = inherited_excess
-                
-                temp_markers = []
-                layers_list = [L1, L2]
-                
-                for i, L in enumerate(layers_list):
-                    rem_counts = {size: plan_ratios[size][i] for size in sizes if plan_ratios[size][i] > 0}
-                    bins = []
-                    active_sizes = sorted([s for s in rem_counts.keys()], key=lambda s: ordered_sizes.index(s))
+                        new_state = {
+                            'markers': state['markers'] + [{'layers': L, 'ratios': f_ratios, 'sum': f_sum}],
+                            'rem': new_rem,
+                            'produced': new_produced
+                        }
+                        if check_validity(new_state['rem']):
+                            waste = sum(max(0, new_state['produced'][s] - targets[s]) for s in sizes)
+                            thick_bonus = sum((m['layers'] ** 1.5) for m in new_state['markers'])
+                            f_score = 1000000 - (waste * 50) + thick_bonus
+                            if f_score > best_valid_score:
+                                best_valid_score = f_score
+                                best_valid_plan = new_state['markers']
+                            new_beam.append(new_state)
 
-                    while any(c > 0 for c in rem_counts.values()):
-                        current_bin = {'layers': L, 'ratios': {}, 'sum': 0}
-                        toggle = True 
+            # 3. 🔥 重构：数学倒推候选生成 (Math-Driven Targeting)
+            candidates = []
+            for L in range(max_layers, min_layers - 1, -1):
+                size_options = []
+                for s in sizes:
+                    if state['rem'][s] <= 0: continue
+                    
+                    # 抛弃盲目循环，直接锁定最接近欠数的配比
+                    r_floor = state['rem'][s] // L
+                    r_ceil = math.ceil(state['rem'][s] / L)
+                    
+                    valid_rs = []
+                    for r in set([r_floor, r_ceil, r_ceil + 1]): 
+                        if 1 <= r <= max_ratio_sum:
+                            prod = r * L
+                            if state['produced'][s] + prod <= max_allowed[s]:
+                                waste_r = max(0, prod - state['rem'][s])
+                                removed_r = min(state['rem'][s], prod)
+                                score_r = removed_r * 10 - waste_r * 50
+                                if prod >= state['rem'][s]: score_r += 2000
+                                if prod == state['rem'][s]: score_r += 5000
+                                valid_rs.append({'size': s, 'r': r, 'score': score_r})
+                                
+                    if valid_rs:
+                        valid_rs.sort(key=lambda x: x['score'], reverse=True)
+                        size_options.append(valid_rs[:2])
                         
-                        while True:
-                            valid_sizes = []
-                            for s in active_sizes:
-                                if rem_counts[s] > 0:
-                                    is_sum_ok = (current_bin['sum'] + 1 <= max_ratio_sum)
-                                    if is_sum_ok:
-                                        if s in current_bin['ratios'] or len(current_bin['ratios']) < max_sizes_per_marker:
-                                            valid_sizes.append(s)
-                            
-                            if not valid_sizes:
-                                break 
-                                
-                            chosen_size = valid_sizes[-1] if toggle else valid_sizes[0]
-                                
-                            current_bin['ratios'][chosen_size] = current_bin['ratios'].get(chosen_size, 0) + 1
-                            current_bin['sum'] += 1
-                            rem_counts[chosen_size] -= 1
-                            
-                            toggle = not toggle 
-                            
-                        if current_bin['sum'] > 0:
-                            bins.append(current_bin)
-                        else:
-                            break 
-                            
-                    temp_markers.extend(bins)
+                if not size_options: continue
                 
-                if len(temp_markers) <= max_markers:
-                    if current_waste < best_waste:
-                        best_waste = current_waste
-                        best_plan = {'L1': L1, 'L2': L2, 'ratios': plan_ratios}
-                        best_markers = temp_markers
+                for k in range(1, min(len(size_options), max_sizes_per_marker) + 1):
+                    for combo_groups in combinations(size_options, k):
+                        for combo in product(*combo_groups):
+                            r_sum = sum(x['r'] for x in combo)
+                            if r_sum <= max_ratio_sum:
+                                c_score = sum(x['score'] for x in combo) + L
+                                candidates.append({
+                                    'layers': L,
+                                    'ratios': {x['size']: x['r'] for x in combo},
+                                    'sum': r_sum,
+                                    'score': c_score
+                                })
+                                
+            candidates.sort(key=lambda x: x['score'], reverse=True)
+            
+            for cand in candidates[:BRANCHES_PER_STATE]:
+                new_rem = state['rem'].copy()
+                new_produced = state['produced'].copy()
+                for s, r in cand['ratios'].items():
+                    new_rem[s] -= r * cand['layers']
+                    new_produced[s] += r * cand['layers']
+                    
+                new_state = {
+                    'markers': state['markers'] + [{'layers': cand['layers'], 'ratios': cand['ratios'], 'sum': cand['sum']}],
+                    'rem': new_rem,
+                    'produced': new_produced
+                }
+                new_beam.append(new_state)
+                
+        # 宇宙大剪枝
+        unique_states = {}
+        for st in new_beam:
+            sig = tuple(sorted([(m['layers'], tuple(sorted(m['ratios'].items()))) for m in st['markers']]))
+            
+            waste = sum(max(0, st['produced'][s] - targets[s]) for s in sizes)
+            removed = sum(min(targets[s], st['produced'][s]) for s in sizes)
+            thick_bonus = sum((m['layers'] ** 1.5) for m in st['markers'])
+            completed = sum(1 for s in sizes if st['produced'][s] >= targets[s])
+            
+            orphan_penalty = 0
+            for s in sizes:
+                rem_val = targets[s] - st['produced'][s]
+                if 0 < rem_val < 10:  
+                    orphan_penalty += 50000
+                    
+            # 极薄层惩罚（逼迫算法寻找更优的组合，避开7层陷阱）
+            thin_layer_penalty = sum(20000 for m in st['markers'] if m['layers'] < 15)
+                    
+            st_score = removed * 100 - waste * 500 + thick_bonus + completed * 20000 - orphan_penalty - thin_layer_penalty
+            
+            if sig not in unique_states or st_score > unique_states[sig]['_score']:
+                st['_score'] = st_score
+                unique_states[sig] = st
+                
+        sorted_states = sorted(unique_states.values(), key=lambda x: x['_score'], reverse=True)
+        beam = sorted_states[:BEAM_WIDTH]
+        
+    # 终点结算
+    for state in beam:
+        if check_validity(state['rem']):
+            waste = sum(max(0, state['produced'][s] - targets[s]) for s in sizes)
+            thick_bonus = sum((m['layers'] ** 1.5) for m in state['markers'])
+            score = 1000000 - (waste * 50) + thick_bonus
+            if score > best_valid_score:
+                best_valid_score = score
+                best_valid_plan = state['markers']
 
-    return sizes, best_markers
+    if best_valid_plan is None:
+        return sizes, None
+        
+    return sizes, best_valid_plan
 
 def generate_html_table(sizes, initial_orders, markers, style_no="", color="", cut_type="", layout_dir="", special_process="", overage_pct=0, shortage_pct=0, allow_large_to_small=False, idx_str=""):
     date_str = datetime.now().strftime("%Y年%m月%d日")
