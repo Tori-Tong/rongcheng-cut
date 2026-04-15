@@ -1505,8 +1505,8 @@ st.subheader("📦 步骤 2：录入订单")
 orders = {}
 sizes_list = []
 
-manual_size_input = st.text_input("尺码（空格隔开）", value="90 100 110 120 130 140")
-manual_qty_input = st.text_input("对应件数（支持 1+1 / 2-1，空格隔开）", value="0 0 0 0 0 0")
+manual_size_input = st.text_input("尺码（空格隔开）", value="")
+manual_qty_input = st.text_input("对应件数（支持 1+1 / 2-1，空格隔开）", value="")
 
 for s in re.split(r'[,，\s、\-]+', manual_size_input.strip()):
     if s and s not in sizes_list:
