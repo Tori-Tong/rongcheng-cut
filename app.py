@@ -806,16 +806,6 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
                         
     auto_note_clean = (auto_note_text or '').strip().rstrip('；;')
     manual_note_clean = (manual_note_text or '').strip()
-    if auto_note_clean:
-        display_note_html = f'<span style="color:#0066cc;font-weight:bold;">{html.escape(auto_note_clean).replace(chr(10), "<br>")}</span>'
-        if manual_note_clean:
-            display_note_html += f'<span style="color:#999;font-weight:normal;"> {html.escape(manual_note_clean).replace(chr(10), "<br>")}</span>'
-        else:
-            display_note_html += '<span style="color:#999;font-weight:normal;">（点击此处可继续补充手动备注…）</span>'
-    elif manual_note_clean:
-        display_note_html = f'<span style="color:#999;font-weight:normal;">{html.escape(manual_note_clean).replace(chr(10), "<br>")}</span>'
-    else:
-        display_note_html = '<span style="color:#999;font-weight:normal;">（点击此处可继续补充手动备注…）</span>'
 
     table_html += '<tr id="final-overcut-row" style="background-color: #fff7e6; border-top: 2px solid #666; border-bottom: 2px solid #666;">'
     for i, s in enumerate(sizes):
@@ -880,6 +870,8 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
             .hint-box {{ background-color: #eef6fc; color: #004085; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; font-family: sans-serif; font-size: 14px; border: 1px solid #b8daff; border-left: 4px solid #0066cc; }}
             #capture-area {{ background-color: white; padding: 15px; border-radius: 5px; }}
             td[contenteditable="true"]:hover {{ background-color: #e6f7ff !important; outline: 2px dashed #1890ff; border-radius: 2px; }}
+            .remark-input:empty:before {{ content: attr(placeholder); color: #999; }}
+            .remark-input:focus {{ border-bottom: 1px solid #0066cc !important; }}
         </style>
     </head>
     <body style="margin: 0; padding: 0;">
@@ -1736,4 +1728,3 @@ for i, tab in enumerate(tabs):
             result_height = 360 + len(st.session_state.get(f'res_markers_{i}', [])) * 120
             result_height = max(500, min(700, result_height))
             components.html(current_html, height=result_height, scrolling=False)
-
