@@ -892,9 +892,10 @@ def generate_html_table(sizes, initial_orders, markers, style_no="", color="", c
         <div id="capture-area">
             {table_html}
             
-            <div style="margin-top: 20px; text-align: left; font-size: 16px; padding: 0 5px; display: flex; align-items: flex-end; gap: 8px;">
+            <div style="margin-top: 20px; text-align: left; font-size: 16px; padding: 0 5px; display: flex; align-items: flex-end;">
                 <b style="color: #333; white-space: nowrap;">📝 备注：</b>
-                <span id="auto-note">{display_note_html}</span>
+                <span id="auto-note" style="color: #0066cc; font-weight: bold;">{auto_note_clean}</span>
+                <div contenteditable="true" class="remark-input" style="flex-grow: 1; border-bottom: 1px solid #aaa; outline: none; padding: 0 5px; color: #333; cursor: text; margin-left: 8px;" placeholder="(点击此处可继续补充手动备注...)">{manual_note_clean}</div>
             </div>
         </div>
         
